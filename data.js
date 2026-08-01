@@ -2,6 +2,7 @@ import { getAuthState, getSupabaseClient } from './supabase.js';
 
 const LOCAL_TASKS_KEY = 'maki-tasks';
 const LOCAL_FILTERS_KEY = 'maki-saved-filters';
+const LOCAL_PLANS_KEY = 'maki-daily-plans';
 const STARTER_PROJECTS = [
   { name: 'Studio relaunch', color: 'coral', position: 0 },
   { name: 'Home', color: 'sage', position: 1 },
@@ -225,6 +226,59 @@ export async function searchWorkspaceTasks(searchText) {
   return data.map(normaliseTask);
 }
 
+export async function loadDailyPlan(planDate) {
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  if (!configured || !client || !user) {
+    const plans = JSON.parse(localStorage.getItem(LOCAL_PLANS_KEY) || '{}');
+    return plans[planDate] || null;
+  }
+  const { data, error } = await client.from('daily_plans').select('*').eq('plan_date', planDate).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function commitDayPlan({ planDate, workdayStart, workdayEnd, items }) {
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  if (!configured || !client || !user) {
+    const plans = JSON.parse(localStorage.getItem(LOCAL_PLANS_KEY) || '{}');
+    const plan = {
+      plan_date: planDate,
+      status: 'committed',
+      workday_start: workdayStart,
+      workday_end: workdayEnd,
+      planned_minutes: items.reduce((total, item) => total + item.plannedMinutes, 0),
+      committed_at: new Date().toISOString()
+    };
+    plans[planDate] = plan;
+    localStorage.setItem(LOCAL_PLANS_KEY, JSON.stringify(plans));
+    return { plan, tasks: [] };
+  }
+
+  const rpcItems = items.map((item, position) => ({
+    task_id: item.taskId,
+    scheduled_at: item.scheduledAt,
+    planned_minutes: item.plannedMinutes,
+    position
+  }));
+  const { data: plan, error } = await client.rpc('commit_day_plan', {
+    p_plan_date: planDate,
+    p_workday_start: workdayStart,
+    p_workday_end: workdayEnd,
+    p_items: rpcItems
+  });
+  if (error) throw error;
+
+  const ids = items.map(item => item.taskId);
+  const { data: rows, error: taskError } = await client
+    .from('tasks')
+    .select('*,project:projects(id,name,color)')
+    .in('id', ids);
+  if (taskError) throw taskError;
+  return { plan, tasks: (rows || []).map(normaliseTask) };
+}
+
 export function persistLocalTasks(tasks) {
   localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(tasks));
 }
@@ -241,6 +295,10 @@ export function subscribeToWorkspace(userId, onChange) {
       timer = setTimeout(onChange, 250);
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'saved_filters', filter: `user_id=eq.${userId}` }, () => {
+      clearTimeout(timer);
+      timer = setTimeout(onChange, 250);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_plans', filter: `user_id=eq.${userId}` }, () => {
       clearTimeout(timer);
       timer = setTimeout(onChange, 250);
     })

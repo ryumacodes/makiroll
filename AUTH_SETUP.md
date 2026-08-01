@@ -1,16 +1,33 @@
-# Maki auth setup
+# Maki production auth + calendar setup
 
-## 1. Google Auth Platform
+## 1. Google Auth Platform — the screen you are on
 
-Create a **Web application** OAuth client and configure:
+Create a **Web application** client named `makirolls`.
 
-- Authorized JavaScript origins:
-  - `http://localhost:5173`
-  - `https://YOUR_PRODUCTION_DOMAIN`
-- Authorized redirect URI:
-  - `https://lcnzxpfmpahmndzdupba.supabase.co/auth/v1/callback`
+### Authorized JavaScript origins
 
-Enable the Google Calendar API and add these Data Access scopes:
+Add these as separate entries:
+
+- `https://makiroll.xyz`
+- `http://localhost:5173`
+
+Add `https://www.makiroll.xyz` only if that hostname will actually serve the app. Do not put a path or trailing slash in an origin.
+
+### Authorized redirect URIs
+
+Replace `https://www.example.com` with exactly:
+
+- `https://lcnzxpfmpahmndzdupba.supabase.co/auth/v1/callback`
+
+This is the Google → Supabase callback. Do **not** put `https://makiroll.xyz/auth/callback` in this Google field; that URL belongs in Supabase's redirect allow-list.
+
+After creating the client, copy its **Client ID** and **Client secret**.
+
+## 2. Google APIs and consent screen
+
+Enable **Google Calendar API** for the same Google Cloud project.
+
+In Google Auth Platform → **Data Access**, add:
 
 - `openid`
 - `https://www.googleapis.com/auth/userinfo.email`
@@ -18,31 +35,57 @@ Enable the Google Calendar API and add these Data Access scopes:
 - `https://www.googleapis.com/auth/calendar.events`
 - `https://www.googleapis.com/auth/calendar.calendarlist.readonly`
 
-The two Calendar scopes are sensitive scopes, so production use may require Google verification.
+Calendar scopes are sensitive. While the app is in Testing, add your own Google account under **Audience → Test users**. Production access for the public will require Google OAuth verification, a privacy policy, and a verified domain.
 
-## 2. Supabase Dashboard
+## 3. Supabase Dashboard
 
-In **Authentication → Sign In / Providers → Google**, enable Google and add the OAuth Client ID and Client Secret.
+In **Authentication → Sign In / Providers → Google**:
 
-In **Authentication → URL Configuration**:
+1. Enable Google.
+2. Paste the Google Client ID and Client secret.
+3. Enable manual identity linking. This lets someone who entered through a magic link attach Google Calendar without creating a second Maki account.
 
-- Site URL: `https://YOUR_PRODUCTION_DOMAIN`
+In **Authentication → URL Configuration** set:
+
+- Site URL: `https://makiroll.xyz`
 - Redirect URLs:
+  - `https://makiroll.xyz/auth/callback`
+  - `https://makiroll.xyz/auth/confirm`
   - `http://localhost:5173/auth/callback`
-  - `https://YOUR_PRODUCTION_DOMAIN/auth/callback`
-  - `https://*-YOUR_VERCEL_TEAM.vercel.app/auth/callback` for previews
+  - `http://localhost:5173/auth/confirm`
 
-Use an exact production callback. Keep the wildcard only for preview deployments.
+Add an exact Vercel preview URL only when you need to test a preview. Avoid a broad wildcard in production.
 
-## 3. Environment variables
+Email auth / magic links are enabled by default. Because Maki uses PKCE, update **Authentication → Email Templates → Magic Link** to:
 
-Copy `.env.example` to `.env.local`, then add the same variables in Vercel for Production, Preview, and Development:
+```html
+<h2>Sign in to Maki</h2>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Open Maki</a></p>
+```
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
+For production delivery, configure custom SMTP; Supabase's default sender is rate-limited and intended for testing.
 
-Only the publishable key belongs in browser code. Never add a secret or `service_role` key to a `VITE_` variable.
+## 4. Vercel variables
 
-## 4. Token handling
+Set these for Production, Preview, and Development:
 
-The browser uses PKCE and requests `access_type=offline` with `prompt=consent`. Maki keeps the short-lived Google provider token in memory only. Before background calendar sync is implemented, the Google refresh token must be sent once to a trusted server-side function and encrypted at rest. Supabase does not refresh Google provider tokens automatically.
+- `VITE_SUPABASE_URL=https://lcnzxpfmpahmndzdupba.supabase.co`
+- `VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...`
+
+Only the publishable key belongs in browser code. Never put a secret or `service_role` key in a `VITE_` variable.
+
+## 5. Calendar sync backend
+
+Deploy the migration and Edge Function after Google credentials are saved:
+
+```sh
+supabase db push
+supabase secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_TOKEN_ENCRYPTION_KEY=...
+supabase functions deploy google-calendar-sync
+```
+
+`GOOGLE_TOKEN_ENCRYPTION_KEY` should be a long random secret (at least 32 random bytes). Keep it out of Git and Vercel's public variables.
+
+The browser asks the Edge Function to sync at startup, every 60 seconds while visible, when the tab regains focus, and when the network reconnects. Google incremental sync tokens keep those checks efficient. Events then fan out to every open Maki client through Supabase Realtime. The Google refresh token is encrypted before being stored and is never persisted in browser storage.
+
+For closed-browser background freshness, schedule the same server-side sync flow every five minutes after the first production deploy. Google push notification channels can be layered on later for near-instant changes, but they still require periodic channel renewal and incremental-sync fallback.

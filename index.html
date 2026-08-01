@@ -3,16 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#101113" />
+  <meta name="theme-color" content="#f7f5ef" />
+  <meta name="description" content="Maki brings tasks and calendar into one calm place, so you can plan a realistic day and focus on what matters." />
+  <meta property="og:title" content="Maki — Make space for what matters" />
+  <meta property="og:description" content="Tasks and calendar, together in one calm daily plan." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Maki — Make space for what matters" />
+  <meta name="twitter:description" content="Tasks and calendar, together in one calm daily plan." />
+  <meta name="twitter:image" content="/og.png" />
   <title>maki — tasks meet time</title>
   <link rel="icon" href="/maki.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app-shell" hidden>
     <aside class="sidebar" aria-label="Primary navigation">
       <div class="brand-row">
         <button class="brand" data-view-target="today" aria-label="maki home">
@@ -68,7 +77,7 @@
           <span>Google Calendar</span><span class="sync-dot"></span>
         </button>
         <button class="profile-row">
-          <span class="avatar">AS</span>
+          <span class="avatar" role="img" aria-label="User avatar"><img alt="" hidden /><canvas aria-hidden="true"></canvas></span>
           <span><strong>Alex Smith</strong><small>alex@maki.app</small></span>
           <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
         </button>
@@ -214,12 +223,56 @@
       <input class="task-title-input" id="taskTitleInput" name="title" placeholder="What needs doing?" autocomplete="off" required />
       <textarea id="taskNotesInput" name="notes" placeholder="Add a note…" rows="2"></textarea>
       <div class="smart-inputs">
-        <label><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg><select id="taskDateInput"><option value="today">Today</option><option value="tomorrow">Tomorrow</option><option value="friday">Friday</option><option value="someday">No date</option></select></label>
-        <label><span class="project-dot coral"></span><select id="taskProjectInput"><option>Studio relaunch</option><option>Home</option><option>Personal</option></select></label>
-        <label><span class="flag-icon">⚑</span><select id="taskPriorityInput"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></label>
+        <div class="smart-select" data-task-select="taskDateInput">
+          <button type="button" class="smart-select-trigger" aria-haspopup="listbox" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg><span data-select-label>Today</span><svg class="select-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button>
+          <select id="taskDateInput" hidden><option value="today">Today</option><option value="tomorrow">Tomorrow</option><option value="friday">Friday</option><option value="someday">No date</option></select>
+          <div class="smart-select-menu" role="listbox" hidden></div>
+        </div>
+        <div class="smart-select" data-task-select="taskProjectInput">
+          <button type="button" class="smart-select-trigger" aria-haspopup="listbox" aria-expanded="false"><span class="project-dot coral"></span><span data-select-label>Studio relaunch</span><svg class="select-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button>
+          <select id="taskProjectInput" hidden><option>Studio relaunch</option><option>Home</option><option>Personal</option></select>
+          <div class="smart-select-menu" role="listbox" hidden></div>
+        </div>
+        <div class="smart-select" data-task-select="taskPriorityInput">
+          <button type="button" class="smart-select-trigger" aria-haspopup="listbox" aria-expanded="false"><span class="flag-icon">⚑</span><span data-select-label>Medium</span><svg class="select-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button>
+          <select id="taskPriorityInput" hidden><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select>
+          <div class="smart-select-menu" role="listbox" hidden></div>
+        </div>
       </div>
       <div class="schedule-toggle"><div><strong>Block time on calendar</strong><small>Find a space in your day automatically</small></div><button type="button" class="switch" id="scheduleSwitch" role="switch" aria-checked="false"><span></span></button></div>
       <div class="modal-footer"><span>Press <kbd>⌘</kbd> + <kbd>Enter</kbd> to add</span><button class="primary-button" type="submit">Add task</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="planning-modal" id="planningModal" aria-labelledby="planningTitle">
+    <form method="dialog" id="planningForm">
+      <header class="planning-header">
+        <div><span class="modal-kicker">Daily planning</span><h2 id="planningTitle">Make today realistic.</h2><p id="planningDateLabel"></p></div>
+        <button type="button" class="icon-button" id="closePlanningButton" aria-label="Close planning">×</button>
+      </header>
+      <div class="planning-controls">
+        <label><span>Start</span><input type="time" id="workdayStartInput" value="09:00" /></label>
+        <label><span>Finish</span><input type="time" id="workdayEndInput" value="17:00" /></label>
+        <button type="button" class="secondary-button" id="autoPlanButton">Auto-arrange</button>
+      </div>
+      <div class="capacity-strip">
+        <div><span id="capacityLabel">0m planned</span><strong id="capacityStatus">A clear day</strong></div>
+        <div class="capacity-track"><span id="capacityFill"></span></div>
+      </div>
+      <div class="planning-layout">
+        <section class="planning-pool" aria-labelledby="planningPoolTitle">
+          <div class="planning-section-title"><div><span>1</span><strong id="planningPoolTitle">Choose what matters</strong></div><small>Today + backlog</small></div>
+          <div class="planning-task-list" id="planningTaskList"></div>
+        </section>
+        <section class="planning-schedule" aria-labelledby="planningScheduleTitle">
+          <div class="planning-section-title"><div><span>2</span><strong id="planningScheduleTitle">Shape the day</strong></div><small id="busyTimeLabel">Checking calendar…</small></div>
+          <div class="planning-slots" id="planningSlots"></div>
+        </section>
+      </div>
+      <footer class="planning-footer">
+        <p id="planningHint">Select tasks, then let Maki fit them around your calendar.</p>
+        <div><button type="button" class="secondary-button" id="cancelPlanningButton">Cancel</button><button type="submit" class="primary-button" id="commitPlanningButton">Commit plan</button></div>
+      </footer>
     </form>
   </dialog>
 
@@ -234,27 +287,121 @@
     <div class="focus-content"><span class="focus-label">FOCUS SESSION</span><p>Homepage visual QA</p><div class="focus-timer" id="focusTimer">25:00</div><button id="focusToggle">Pause</button><small>Studio relaunch · Today</small></div>
   </div>
 
-  <section class="auth-gate" id="authGate" aria-labelledby="authTitle" hidden>
-    <div class="auth-card">
-      <span class="brand auth-brand"><span class="brand-mark"><span></span></span><span>maki</span></span>
-      <p class="eyebrow">Tasks meet time</p>
-      <h1 id="authTitle">Your week,<br />finally in one place.</h1>
-      <p>Plan tasks, shape your calendar, and keep every project moving without fighting your tools.</p>
-      <button class="google-button" id="googleSignInButton">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h5.4a4.6 4.6 0 0 1-2 3v2.8h3.7c2.2-2 3.5-4.9 3.5-7.9Z"/><path d="M12 22c2.7 0 5-.9 6.7-2.3L15 16.9c-1 .7-2.3 1.1-3.8 1.1-2.6 0-4.8-1.8-5.6-4.1H1.8v2.9A10.1 10.1 0 0 0 12 22Z"/><path d="M5.6 13.9a6 6 0 0 1 0-3.8V7.2H1.8a10.1 10.1 0 0 0 0 9.6l3.8-2.9Z"/><path d="M12 6c1.6 0 3 .5 4.1 1.6l3.1-3A10.3 10.3 0 0 0 1.8 7.2l3.8 2.9C6.4 7.8 8.6 6 12 6Z"/></svg>
-        Continue with Google
-      </button>
-      <small>By continuing, you agree to let maki connect your Google Calendar. You stay in control of your data.</small>
-      <div class="auth-status" id="authStatus" role="status"></div>
-    </div>
-    <div class="auth-preview" aria-hidden="true">
-      <div class="preview-date"><span>Today</span><strong>4 things worth doing</strong></div>
-      <div class="preview-block accent-block"><small>9:00</small><span>Homepage visual QA</span></div>
-      <div class="preview-block coral-block"><small>10:30</small><span>Homepage critique</span></div>
-      <div class="preview-block muted-block"><small>12:00</small><span>Write launch email</span></div>
-    </div>
+  <section class="auth-gate landing" id="authGate" aria-labelledby="landingHeadline" hidden>
+    <nav class="landing-nav" aria-label="Landing page navigation">
+      <a class="landing-brand" href="#landingTop" aria-label="Maki home"><span class="brand-mark" aria-hidden="true"></span><span>maki</span></a>
+      <div class="landing-nav-links">
+        <a href="#howItWorks">How it works</a>
+        <a href="#features">Features</a>
+      </div>
+      <a class="landing-nav-cta" href="#getStarted">Start planning <span aria-hidden="true">→</span></a>
+    </nav>
+
+    <main id="landingTop">
+      <section class="landing-hero">
+        <div class="hero-copy">
+          <p class="landing-kicker"><span></span> Tasks meet time</p>
+          <h1 id="landingHeadline">Make space for<br /><em>what matters.</em></h1>
+          <p class="hero-lede">Maki brings your tasks and calendar into one calm place—so you can plan a realistic day and get on with it.</p>
+          <div class="hero-actions">
+            <a class="landing-primary" href="#getStarted">Plan your first day <span aria-hidden="true">→</span></a>
+            <a class="landing-text-link" href="#howItWorks">See how it works</a>
+          </div>
+          <p class="hero-note">Free to start · No card required</p>
+        </div>
+
+        <div class="product-scene" aria-label="A preview of Maki's daily planner">
+          <div class="product-window">
+            <div class="window-bar"><span></span><span></span><span></span><small>Today</small></div>
+            <div class="preview-shell">
+              <aside class="preview-sidebar">
+                <div class="preview-logo"><span class="brand-mark"></span><strong>maki</strong></div>
+                <div class="preview-new">＋ <span>New task</span></div>
+                <div class="preview-nav-item active"><i>●</i><span>Today</span><b>4</b></div>
+                <div class="preview-nav-item"><i>○</i><span>Upcoming</span></div>
+                <div class="preview-nav-item"><i>□</i><span>All tasks</span><b>12</b></div>
+                <small class="preview-label">Projects</small>
+                <div class="preview-nav-item"><i class="coral-dot"></i><span>Studio relaunch</span></div>
+                <div class="preview-nav-item"><i class="green-dot"></i><span>Home</span></div>
+              </aside>
+              <div class="preview-main">
+                <div class="preview-top"><span>Thursday · May 22</span><button>Focus</button></div>
+                <div class="preview-content">
+                  <p>Your daily plan</p>
+                  <h2>Good morning, Alex.</h2>
+                  <div class="preview-layout">
+                    <div class="preview-agenda">
+                      <div class="agenda-heading"><strong>Today</strong><small>4 tasks</small></div>
+                      <div class="agenda-row"><time>9:00</time><div class="agenda-task blue"><span></span><p><strong>Homepage visual QA</strong><small>Studio relaunch · 45m</small></p></div></div>
+                      <div class="agenda-row"><time>10:30</time><div class="agenda-task pink"><span></span><p><strong>Homepage critique</strong><small>Design team · 30m</small></p></div></div>
+                      <div class="agenda-row"><time>12:00</time><div class="agenda-task green"><span></span><p><strong>Write launch email</strong><small>Studio relaunch · 45m</small></p></div></div>
+                    </div>
+                    <div class="preview-next"><small>Next up</small><strong>10:30</strong><h3>Homepage critique</h3><p>Design team · 30 min</p><button>Join meeting</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="floating-plan"><span>✓</span><div><small>Day planned</small><strong>3h 45m of focused work</strong></div></div>
+        </div>
+      </section>
+
+      <section class="landing-proof" aria-label="Product capabilities">
+        <p>One thoughtful place for</p>
+        <div><span>Tasks</span><i></i><span>Calendar</span><i></i><span>Projects</span><i></i><span>Focus</span></div>
+      </section>
+
+      <section class="landing-story" id="howItWorks">
+        <div class="story-heading">
+          <p class="landing-kicker"><span></span> A lighter way to plan</p>
+          <h2>Your list tells you <em>what.</em><br />Maki helps with <em>when.</em></h2>
+        </div>
+        <div class="story-steps">
+          <article><span>01</span><h3>Capture it</h3><p>Add a thought in seconds. Give it a project, a priority, or leave the details for later.</p></article>
+          <article><span>02</span><h3>Shape your day</h3><p>See tasks beside real calendar commitments, then make a plan that actually fits.</p></article>
+          <article><span>03</span><h3>Make progress</h3><p>Start a focus session, finish one thing, and let the rest of your day stay quiet.</p></article>
+        </div>
+      </section>
+
+      <section class="landing-features" id="features">
+        <article class="feature-card feature-large">
+          <div><p class="landing-kicker"><span></span> Today, clearly</p><h2>A day that feels possible.</h2><p>Build a simple agenda from tasks and meetings. Maki keeps the plan grounded in the hours you really have.</p></div>
+          <div class="mini-day" aria-hidden="true"><div><time>09:00</time><span class="mini-event blue">Homepage visual QA <small>45m</small></span></div><div><time>10:30</time><span class="mini-event pink">Design critique <small>30m</small></span></div><div><time>12:00</time><span class="mini-free">Space to think</span></div></div>
+        </article>
+        <article class="feature-card feature-focus">
+          <div class="focus-orbit" aria-hidden="true"><span>25:00</span><i></i></div>
+          <div><p class="landing-kicker"><span></span> Focus mode</p><h2>One thing at a time.</h2><p>A quiet timer for the work in front of you—nothing more.</p></div>
+        </article>
+        <article class="feature-card feature-projects">
+          <div><p class="landing-kicker"><span></span> Projects, moving</p><h2>See the whole picture.</h2><p>Move from today’s details to a clean project board without losing your place.</p></div>
+          <div class="project-bars" aria-hidden="true"><span><i></i><b>Studio relaunch</b><em>5 tasks</em></span><span><i></i><b>Home</b><em>3 tasks</em></span><span><i></i><b>Personal</b><em>4 tasks</em></span></div>
+        </article>
+      </section>
+
+      <section class="landing-signup" id="getStarted">
+        <div class="signup-copy"><p class="landing-kicker"><span></span> Start with today</p><h2>Less juggling.<br /><em>More doing.</em></h2><p>Bring your tasks and calendar together. Your next clear day is a minute away.</p></div>
+        <div class="auth-card">
+          <p class="auth-card-label">Create your workspace</p>
+          <h2 id="authTitle">Welcome to Maki.</h2>
+          <p>Connect Google for calendar sync, or start with an email link.</p>
+          <button class="google-button" id="googleSignInButton">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h5.4a4.6 4.6 0 0 1-2 3v2.8h3.7c2.2-2 3.5-4.9 3.5-7.9Z"/><path d="M12 22c2.7 0 5-.9 6.7-2.3L15 16.9c-1 .7-2.3 1.1-3.8 1.1-2.6 0-4.8-1.8-5.6-4.1H1.8v2.9A10.1 10.1 0 0 0 12 22Z"/><path d="M5.6 13.9a6 6 0 0 1 0-3.8V7.2H1.8a10.1 10.1 0 0 0 0 9.6l3.8-2.9Z"/><path d="M12 6c1.6 0 3 .5 4.1 1.6l3.1-3A10.3 10.3 0 0 0 1.8 7.2l3.8 2.9C6.4 7.8 8.6 6 12 6Z"/></svg>
+            Continue with Google
+          </button>
+          <div class="auth-divider"><span>or continue with email</span></div>
+          <form class="magic-link-form" id="magicLinkForm">
+            <label for="magicLinkEmail">Email address</label>
+            <div><input id="magicLinkEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required /><button type="submit">Get started</button></div>
+          </form>
+          <small>By continuing, you agree to keep making time for the good stuff.</small>
+          <div class="auth-status" id="authStatus" role="status"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="landing-footer"><a class="landing-brand" href="#landingTop"><span class="brand-mark"></span><span>maki</span></a><p>Tasks meet time.</p><span>© 2026 Maki</span></footer>
   </section>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>
