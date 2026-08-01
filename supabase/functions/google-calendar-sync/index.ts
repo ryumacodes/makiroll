@@ -2,16 +2,24 @@ import { createClient } from 'npm:@supabase/supabase-js@2.111.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+type AdminClient = ReturnType<typeof createClient>;
 
 function env(name: string) {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing ${name}`);
   return value;
+}
+
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 function encodeBase64(bytes: Uint8Array) {
@@ -20,6 +28,18 @@ function encodeBase64(bytes: Uint8Array) {
 
 function decodeBase64(value: string) {
   return Uint8Array.from(atob(value), character => character.charCodeAt(0));
+}
+
+async function secretsMatch(expected: string, supplied: string) {
+  const [expectedHash, suppliedHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(expected)),
+    crypto.subtle.digest('SHA-256', encoder.encode(supplied)),
+  ]);
+  const left = new Uint8Array(expectedHash);
+  const right = new Uint8Array(suppliedHash);
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
 }
 
 async function encryptionKey() {
@@ -81,147 +101,199 @@ function eventRow(userId: string, calendarId: string, event: Record<string, any>
   };
 }
 
+async function recordFailure(admin: AdminClient, userId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  await admin.from('calendar_connections').update({
+    last_error: message.slice(0, 1000),
+    next_sync_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+  }).eq('user_id', userId);
+}
+
+async function claimConnection(admin: AdminClient, userId: string) {
+  const now = new Date().toISOString();
+  const lockUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const { data, error } = await admin
+    .from('calendar_connections')
+    .update({ next_sync_at: lockUntil, last_error: null })
+    .eq('user_id', userId)
+    .lte('next_sync_at', now)
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function syncConnection(
+  admin: AdminClient,
+  userId: string,
+  existing: Record<string, any> | null,
+  providerAccessToken?: string,
+  providerRefreshToken?: string,
+) {
+  let connection = existing;
+  let refreshToken = providerRefreshToken || (connection?.refresh_token_ciphertext ? await decrypt(connection.refresh_token_ciphertext) : null);
+  let accessToken = providerAccessToken || (connection?.access_token_ciphertext ? await decrypt(connection.access_token_ciphertext) : null);
+
+  if (providerAccessToken || providerRefreshToken) {
+    if (!refreshToken) throw new Error('Google did not return a refresh token. Reconnect and approve calendar access again.');
+    if (!accessToken) throw new Error('Google did not return an access token.');
+    const profile = await googleRequest('https://www.googleapis.com/oauth2/v3/userinfo', accessToken);
+    const { data, error } = await admin.from('calendar_connections').upsert({
+      user_id: userId,
+      google_email: profile.email || null,
+      access_token_ciphertext: await encrypt(accessToken),
+      refresh_token_ciphertext: await encrypt(refreshToken),
+      token_expires_at: new Date(Date.now() + 50 * 60 * 1000).toISOString(),
+      scopes: ['calendar.events', 'calendar.calendarlist.readonly'],
+      connected_at: connection?.connected_at || new Date().toISOString(),
+      next_sync_at: new Date().toISOString(),
+      last_error: null,
+    }, { onConflict: 'user_id' }).select('*').single();
+    if (error) throw error;
+    connection = data;
+  }
+
+  if (!refreshToken) return { connected: false, imported: 0 };
+
+  if (!accessToken || !connection?.token_expires_at || Date.parse(connection.token_expires_at) < Date.now() + 60_000) {
+    const refreshed = await refreshAccessToken(refreshToken);
+    accessToken = refreshed.access_token;
+    const { error } = await admin.from('calendar_connections').update({
+      access_token_ciphertext: await encrypt(accessToken),
+      token_expires_at: new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString(),
+    }).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  const calendars: Record<string, any>[] = [];
+  let calendarPageToken: string | undefined;
+  do {
+    const listQuery = new URLSearchParams({ minAccessRole: 'reader', maxResults: '250' });
+    if (calendarPageToken) listQuery.set('pageToken', calendarPageToken);
+    const list = await googleRequest(`https://www.googleapis.com/calendar/v3/users/me/calendarList?${listQuery}`, accessToken);
+    calendars.push(...(list.items || []));
+    calendarPageToken = list.nextPageToken;
+  } while (calendarPageToken);
+
+  let imported = 0;
+  for (const calendar of calendars) {
+    if (calendar.deleted || calendar.hidden) continue;
+    const calendarId = calendar.id;
+    const { data: state, error: stateError } = await admin.from('calendar_sync_state').select('sync_token').eq('user_id', userId).eq('calendar_id', calendarId).maybeSingle();
+    if (stateError) throw stateError;
+    let pageToken: string | undefined;
+    let nextSyncToken: string | undefined;
+    let resetSync = false;
+
+    do {
+      const query = new URLSearchParams({ singleEvents: 'true', showDeleted: 'true', maxResults: '2500' });
+      if (pageToken) query.set('pageToken', pageToken);
+      if (state?.sync_token && !resetSync) query.set('syncToken', state.sync_token);
+      else {
+        query.set('timeMin', new Date(Date.now() - 30 * 86400000).toISOString());
+        query.set('timeMax', new Date(Date.now() + 366 * 86400000).toISOString());
+      }
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${query}`;
+      let response: any;
+      try {
+        response = await googleRequest(url, accessToken);
+      } catch (error) {
+        if (String(error).includes('410') && state?.sync_token && !resetSync) {
+          resetSync = true;
+          pageToken = undefined;
+          continue;
+        }
+        throw error;
+      }
+      const rows = (response.items || []).map((event: Record<string, any>) => eventRow(userId, calendarId, event));
+      if (rows.length) {
+        const { error } = await admin.from('calendar_events').upsert(rows, { onConflict: 'user_id,calendar_id,external_id' });
+        if (error) throw error;
+        imported += rows.length;
+      }
+      pageToken = response.nextPageToken;
+      nextSyncToken = response.nextSyncToken || nextSyncToken;
+    } while (pageToken);
+
+    if (nextSyncToken) {
+      const { error } = await admin.from('calendar_sync_state').upsert({ user_id: userId, calendar_id: calendarId, sync_token: nextSyncToken }, { onConflict: 'user_id,calendar_id' });
+      if (error) throw error;
+    }
+  }
+
+  const lastSyncedAt = new Date().toISOString();
+  const { error: connectionError } = await admin.from('calendar_connections').update({
+    last_synced_at: lastSyncedAt,
+    next_sync_at: new Date(Date.now() + 60 * 1000).toISOString(),
+    last_error: null,
+  }).eq('user_id', userId);
+  if (connectionError) throw connectionError;
+
+  return { connected: true, imported, lastSyncedAt };
+}
+
 Deno.serve(async request => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-  let failureAdmin: ReturnType<typeof createClient> | null = null;
-  let failureUserId: string | null = null;
+  const supabaseUrl = env('SUPABASE_URL');
+  const admin = createClient(supabaseUrl, env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
+  const body = await request.json().catch(() => ({}));
+  const action = body.action || 'sync';
+
+  if (action === 'sync-due') {
+    const suppliedSecret = request.headers.get('x-cron-secret') || '';
+    if (!await secretsMatch(env('GOOGLE_SYNC_CRON_SECRET'), suppliedSecret)) return json({ error: 'Unauthorized' }, 401);
+
+    const now = new Date().toISOString();
+    const { data: due, error } = await admin
+      .from('calendar_connections')
+      .select('*')
+      .lte('next_sync_at', now)
+      .order('next_sync_at')
+      .limit(10);
+    if (error) return json({ error: error.message }, 500);
+
+    let synced = 0;
+    let failed = 0;
+    for (const candidate of due || []) {
+      try {
+        const claimed = await claimConnection(admin, candidate.user_id);
+        if (!claimed) continue;
+        await syncConnection(admin, candidate.user_id, claimed);
+        synced += 1;
+      } catch (syncError) {
+        failed += 1;
+        await recordFailure(admin, candidate.user_id, syncError);
+      }
+    }
+    return json({ attempted: due?.length || 0, synced, failed });
+  }
+
+  let userId: string | null = null;
   try {
     const authorization = request.headers.get('Authorization');
-    if (!authorization) throw new Error('Missing authorization');
-
-    const supabaseUrl = env('SUPABASE_URL');
+    if (!authorization) return json({ error: 'Unauthorized' }, 401);
     const userClient = createClient(supabaseUrl, env('SUPABASE_ANON_KEY'), {
       global: { headers: { Authorization: authorization } },
       auth: { persistSession: false },
     });
     const { data: { user }, error: userError } = await userClient.auth.getUser();
-    if (userError || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (userError || !user) return json({ error: 'Unauthorized' }, 401);
+    userId = user.id;
 
-    const admin = createClient(supabaseUrl, env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
-    failureAdmin = admin;
-    failureUserId = user.id;
-    const body = await request.json().catch(() => ({}));
-    const action = body.action || 'sync';
-    const { data: existing } = await admin.from('calendar_connections').select('*').eq('user_id', user.id).maybeSingle();
-
-    if (action === 'sync' && existing) {
-      const now = new Date().toISOString();
-      const lockUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const { data: claim, error: claimError } = await admin
-        .from('calendar_connections')
-        .update({ next_sync_at: lockUntil, last_error: null })
-        .eq('user_id', user.id)
-        .lte('next_sync_at', now)
-        .select('user_id,last_synced_at')
-        .maybeSingle();
-      if (claimError) throw claimError;
-      if (!claim) return new Response(JSON.stringify({ connected: true, skipped: true, lastSyncedAt: existing.last_synced_at }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
-    let refreshToken = body.providerRefreshToken || (existing?.refresh_token_ciphertext ? await decrypt(existing.refresh_token_ciphertext) : null);
-    let accessToken = body.providerAccessToken || (existing?.access_token_ciphertext ? await decrypt(existing.access_token_ciphertext) : null);
+    const { data: existing, error: existingError } = await admin.from('calendar_connections').select('*').eq('user_id', user.id).maybeSingle();
+    if (existingError) throw existingError;
 
     if (action === 'connect') {
-      if (!refreshToken) throw new Error('Google did not return a refresh token. Reconnect and approve calendar access again.');
-      if (!accessToken) throw new Error('Google did not return an access token.');
-      const profile = await googleRequest('https://www.googleapis.com/oauth2/v3/userinfo', accessToken);
-      const { error } = await admin.from('calendar_connections').upsert({
-        user_id: user.id,
-        google_email: profile.email || user.email,
-        access_token_ciphertext: await encrypt(accessToken),
-        refresh_token_ciphertext: await encrypt(refreshToken),
-        token_expires_at: new Date(Date.now() + 50 * 60 * 1000).toISOString(),
-        scopes: ['calendar.events', 'calendar.calendarlist.readonly'],
-        connected_at: existing?.connected_at || new Date().toISOString(),
-        next_sync_at: new Date().toISOString(),
-        last_error: null,
-      }, { onConflict: 'user_id' });
-      if (error) throw error;
+      return json(await syncConnection(admin, user.id, existing, body.providerAccessToken, body.providerRefreshToken));
     }
+    if (!existing) return json({ connected: false });
 
-    if (!refreshToken) return new Response(JSON.stringify({ connected: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    if (!accessToken || !existing?.token_expires_at || Date.parse(existing.token_expires_at) < Date.now() + 60_000) {
-      const refreshed = await refreshAccessToken(refreshToken);
-      accessToken = refreshed.access_token;
-      await admin.from('calendar_connections').update({
-        access_token_ciphertext: await encrypt(accessToken),
-        token_expires_at: new Date(Date.now() + (refreshed.expires_in || 3600) * 1000).toISOString(),
-      }).eq('user_id', user.id);
-    }
-
-    const calendars: Record<string, any>[] = [];
-    let calendarPageToken: string | undefined;
-    do {
-      const listQuery = new URLSearchParams({ minAccessRole: 'reader', maxResults: '250' });
-      if (calendarPageToken) listQuery.set('pageToken', calendarPageToken);
-      const list = await googleRequest(`https://www.googleapis.com/calendar/v3/users/me/calendarList?${listQuery}`, accessToken);
-      calendars.push(...(list.items || []));
-      calendarPageToken = list.nextPageToken;
-    } while (calendarPageToken);
-    let imported = 0;
-    for (const calendar of calendars) {
-      if (calendar.deleted || calendar.hidden) continue;
-      const calendarId = calendar.id;
-      const { data: state } = await admin.from('calendar_sync_state').select('sync_token').eq('user_id', user.id).eq('calendar_id', calendarId).maybeSingle();
-      let pageToken: string | undefined;
-      let nextSyncToken: string | undefined;
-      let resetSync = false;
-
-      do {
-        const query = new URLSearchParams({ singleEvents: 'true', showDeleted: 'true', maxResults: '2500' });
-        if (pageToken) query.set('pageToken', pageToken);
-        if (state?.sync_token && !resetSync) query.set('syncToken', state.sync_token);
-        else {
-          query.set('timeMin', new Date(Date.now() - 30 * 86400000).toISOString());
-          query.set('timeMax', new Date(Date.now() + 366 * 86400000).toISOString());
-        }
-        const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${query}`;
-        let response: any;
-        try {
-          response = await googleRequest(url, accessToken);
-        } catch (error) {
-          if (String(error).includes('410') && state?.sync_token && !resetSync) {
-            resetSync = true;
-            pageToken = undefined;
-            continue;
-          }
-          throw error;
-        }
-        const rows = (response.items || []).map((event: Record<string, any>) => eventRow(user.id, calendarId, event));
-        if (rows.length) {
-          const { error } = await admin.from('calendar_events').upsert(rows, { onConflict: 'user_id,calendar_id,external_id' });
-          if (error) throw error;
-          imported += rows.length;
-        }
-        pageToken = response.nextPageToken;
-        nextSyncToken = response.nextSyncToken || nextSyncToken;
-      } while (pageToken);
-
-      if (nextSyncToken) {
-        await admin.from('calendar_sync_state').upsert({ user_id: user.id, calendar_id: calendarId, sync_token: nextSyncToken }, { onConflict: 'user_id,calendar_id' });
-      }
-    }
-
-    await admin.from('calendar_connections').update({
-      last_synced_at: new Date().toISOString(),
-      next_sync_at: new Date(Date.now() + 60 * 1000).toISOString(),
-      last_error: null,
-    }).eq('user_id', user.id);
-
-    return new Response(JSON.stringify({ connected: true, imported }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const claimed = await claimConnection(admin, user.id);
+    if (!claimed) return json({ connected: true, skipped: true, lastSyncedAt: existing.last_synced_at });
+    return json(await syncConnection(admin, user.id, claimed));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (failureAdmin && failureUserId) {
-      await failureAdmin.from('calendar_connections').update({
-        last_error: message.slice(0, 1000),
-        next_sync_at: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
-      }).eq('user_id', failureUserId);
-    }
-    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    if (userId) await recordFailure(admin, userId, error);
+    return json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 });

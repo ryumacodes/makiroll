@@ -382,6 +382,11 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+[functions.google-calendar-sync]
+# The function performs its own user JWT or cron-secret verification so the
+# scheduled job can call it without impersonating a user.
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

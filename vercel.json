@@ -4,6 +4,7 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/app", "destination": "/index.html" },
     { "source": "/auth/callback", "destination": "/index.html" },
     { "source": "/auth/confirm", "destination": "/index.html" }
   ]

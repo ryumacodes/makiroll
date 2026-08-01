@@ -80,12 +80,16 @@ Deploy the migration and Edge Function after Google credentials are saved:
 
 ```sh
 supabase db push
-supabase secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_TOKEN_ENCRYPTION_KEY=...
-supabase functions deploy google-calendar-sync
+supabase secrets set GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_TOKEN_ENCRYPTION_KEY=... GOOGLE_SYNC_CRON_SECRET=...
+supabase functions deploy google-calendar-sync --no-verify-jwt
 ```
 
 `GOOGLE_TOKEN_ENCRYPTION_KEY` should be a long random secret (at least 32 random bytes). Keep it out of Git and Vercel's public variables.
 
 The browser asks the Edge Function to sync at startup, every 60 seconds while visible, when the tab regains focus, and when the network reconnects. Google incremental sync tokens keep those checks efficient. Events then fan out to every open Maki client through Supabase Realtime. The Google refresh token is encrypted before being stored and is never persisted in browser storage.
 
-For closed-browser background freshness, schedule the same server-side sync flow every five minutes after the first production deploy. Google push notification channels can be layered on later for near-instant changes, but they still require periodic channel renewal and incremental-sync fallback.
+Closed-browser reconciliation is deployed through Supabase Cron as `maki-google-calendar-sync-every-30-minutes`. Its URL, publishable key, and independent Cron secret are encrypted in Supabase Vault. The worker claims due connections atomically and processes at most ten per run to prevent overlapping work. Google push notification channels can be layered on later for near-instant changes, but they still require periodic channel renewal and incremental-sync fallback.
+
+## 6. Vercel Web Analytics
+
+`@vercel/analytics` is installed and loaded asynchronously only in production. OAuth callback routes are excluded so tokens and login parameters are not recorded. Enable Web Analytics for the Vercel project, deploy, and visit the production domain; no additional environment variable is required.

@@ -24,10 +24,32 @@
   <div class="app-shell" hidden>
     <aside class="sidebar" aria-label="Primary navigation">
       <div class="brand-row">
-        <button class="brand" data-view-target="today" aria-label="maki home">
-          <span class="brand-mark"><span></span></span>
-          <span>maki</span>
-        </button>
+        <div class="workspace-menu-wrap">
+          <button class="brand" id="workspaceMenuButton" aria-label="Open workspace menu" aria-haspopup="menu" aria-expanded="false">
+            <span class="brand-mark"><span></span></span>
+            <span>maki</span><span class="workspace-chevron">⌄</span>
+          </button>
+          <div class="workspace-menu" id="workspaceMenu" role="menu" hidden>
+            <section><div class="workspace-menu-label"><span>Workspace</span></div>
+              <button type="button" data-workspace-action="settings" role="menuitem"><span class="workspace-menu-icon">⚙</span><span>Settings</span></button>
+              <button type="button" data-workspace-action="integrations" role="menuitem"><span class="workspace-menu-icon">↻</span><span>Integrations</span></button>
+              <button type="button" data-workspace-action="analytics" role="menuitem"><span class="workspace-menu-icon">⌁</span><span>Analytics</span></button>
+            </section>
+            <section><div class="workspace-menu-label"><span>Resources</span></div>
+              <button type="button" data-workspace-action="shortcuts" role="menuitem"><span class="workspace-menu-icon">⌨</span><span>Keyboard shortcuts</span><kbd>?</kbd></button>
+              <button type="button" data-workspace-action="help" role="menuitem"><span class="workspace-menu-icon">?</span><span>Help centre</span></button>
+            </section>
+            <section><div class="workspace-menu-label"><span>Product</span></div>
+              <button type="button" data-workspace-action="desktop" role="menuitem" class="workspace-menu-muted"><span class="workspace-menu-icon">▣</span><span>Desktop app</span><small>Coming soon</small></button>
+              <button type="button" data-workspace-action="feedback" role="menuitem"><span class="workspace-menu-icon">♧</span><span>Request a feature</span></button>
+              <button type="button" data-workspace-action="trash" role="menuitem"><span class="workspace-menu-icon">⌫</span><span>Trash</span><small id="trashMenuCount"></small></button>
+            </section>
+            <section class="workspace-account"><div class="workspace-menu-label"><span>Account</span></div>
+              <p>Logged in as<br><strong id="workspaceMenuEmail">alex@maki.app</strong></p>
+              <button type="button" id="workspaceSignOutButton" role="menuitem"><span class="workspace-menu-icon">⇥</span><span>Log out</span></button>
+            </section>
+          </div>
+        </div>
         <button class="icon-button sidebar-collapse" aria-label="Collapse sidebar" data-tooltip="Collapse sidebar">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         </button>
@@ -43,6 +65,9 @@
             <svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg>
             <span>Today</span><span class="nav-count" id="todayCount">4</span>
           </button>
+          <button class="nav-item" data-view-target="focus">
+            <svg viewBox="0 0 24 24"><path d="M5 5h14v11H5zM8 20h8M9 16v4m6-4v4"/></svg><span>Focus</span>
+          </button>
           <button class="nav-item" data-view-target="upcoming">
             <svg viewBox="0 0 24 24"><path d="M5 3v4M19 3v4M3 11h18M4 5h16v16H4zM8 15h.01M12 15h.01M16 15h.01"/></svg>
             <span>Upcoming</span>
@@ -55,6 +80,13 @@
             <svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg>
             <span>Calendar</span>
           </button>
+        </div>
+
+        <div class="nav-group ritual-nav">
+          <div class="nav-label"><span>Daily rituals</span></div>
+          <button class="nav-item" data-ritual="planning"><svg viewBox="0 0 24 24"><path d="M7 3h10v3H7zM5 5h14v16H5zM8 10h8M8 14h8M8 18h5"/></svg><span>Daily planning</span></button>
+          <button class="nav-item" data-ritual="shutdown"><svg viewBox="0 0 24 24"><path d="M5 4h14v14H5zM8 21h8M9 18v3m6-3v3"/></svg><span>Daily shutdown</span></button>
+          <button class="nav-item" data-ritual="highlights"><svg viewBox="0 0 24 24"><path d="m4 20 4-1 11-11-3-3L5 16zM14 7l3 3"/></svg><span>Daily highlights</span></button>
         </div>
 
         <div class="nav-group projects-nav">
@@ -76,11 +108,19 @@
           <svg viewBox="0 0 24 24"><path d="M20 7h-7V0M4 17h7v7M20 7a9 9 0 0 0-15-3L2 7m2 10a9 9 0 0 0 15 3l3-3"/></svg>
           <span>Google Calendar</span><span class="sync-dot"></span>
         </button>
-        <button class="profile-row">
-          <span class="avatar" role="img" aria-label="User avatar"><img alt="" hidden /><canvas aria-hidden="true"></canvas></span>
-          <span><strong>Alex Smith</strong><small>alex@maki.app</small></span>
-          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
-        </button>
+        <div class="profile-menu-wrap">
+          <button class="profile-row" id="profileMenuButton" aria-haspopup="menu" aria-expanded="false">
+            <span class="avatar" role="img" aria-label="User avatar"><img alt="" hidden /><canvas aria-hidden="true"></canvas></span>
+            <span><strong>Alex Smith</strong><small>alex@maki.app</small></span>
+            <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+          <div class="profile-menu" id="profileMenu" role="menu" hidden>
+            <div class="profile-menu-details"><strong>Alex Smith</strong><small>alex@maki.app</small></div>
+            <button type="button" id="manageConnectionsButton" role="menuitem"><svg viewBox="0 0 24 24"><path d="M9 12a3 3 0 0 0 3 3h3m0-6h-3a3 3 0 0 0 0 6m-2-7-2-2a4 4 0 0 0-6 6l2 2m10 2 2 2a4 4 0 0 0 6-6l-2-2"/></svg><span>Connections</span></button>
+            <a href="/" role="menuitem"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7v9H3z"/></svg><span>View landing page</span></a>
+            <button type="button" id="signOutButton" role="menuitem"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5m4-3 4-4-4-4m4 4H9"/></svg><span>Sign out</span></button>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -127,6 +167,10 @@
           </section>
 
           <aside class="right-rail">
+            <section class="panel sticky-day-timeline" aria-label="Today timeline">
+              <header><div><strong>Today</strong><small id="stickyTimelineDate">Sunday 2 August</small></div><span>Calendar</span></header>
+              <div class="sticky-day-hours" id="stickyDayHours"></div>
+            </section>
             <section class="panel next-up-card">
               <div class="section-heading compact"><h2>Next up</h2><span class="live-pill"><i></i> In 24 min</span></div>
               <div class="next-event">
@@ -151,6 +195,27 @@
         </div>
       </section>
 
+      <section class="view" id="focusView" data-view="focus">
+        <div class="focus-workspace-tabs"><button class="active" data-focus-mode="focus">◉ Focus</button><button data-focus-mode="pomodoro">◷ Pomodoro</button></div>
+        <div class="focus-workspace" id="focusWorkspace">
+          <div class="focus-task-pane">
+            <p class="eyebrow">Deep work</p>
+            <h1 id="focusTaskTitle">Choose a task to focus on</h1>
+            <div class="focus-subtasks" id="focusSubtasks"></div>
+            <div class="focus-task-picker" id="focusTaskPicker"></div>
+          </div>
+          <aside class="focus-timer-pane">
+            <span id="focusTimerLabel">Remaining</span>
+            <strong id="workspaceFocusTimer">25:00</strong>
+            <small id="focusSessionLabel">Session · 25m</small>
+            <button class="primary-button" id="workspaceFocusStart">▷ Start</button>
+            <div class="pomodoro-lengths" id="pomodoroLengths" hidden><button data-pomodoro-minutes="25" class="active">25</button><button data-pomodoro-minutes="45">45</button><button data-pomodoro-minutes="60">60</button></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="ritualView" data-view="ritual"><div id="ritualContent"></div></section>
+
       <section class="view" id="boardView" data-view="board">
         <div class="page-heading board-heading">
           <div><p class="eyebrow">Project</p><h1 id="boardTitle">Studio relaunch</h1><p class="heading-subtitle">Everything moving the new studio forward.</p></div>
@@ -162,9 +227,10 @@
 
       <section class="view" id="tasksView" data-view="tasks">
         <div class="page-heading compact-page-heading">
-          <div><p class="eyebrow">Everything, in one place</p><h1>All tasks</h1></div>
+          <div><p class="eyebrow" id="tasksEyebrow">Everything, in one place</p><h1 id="tasksTitle">All tasks</h1></div>
           <button class="primary-button" data-open-task>+ Add task</button>
         </div>
+        <div class="view-tabs project-context-tabs" hidden><button data-project-switch="board">Board</button><button data-project-switch="tasks">List</button><button data-project-switch="calendar">Timeline</button></div>
         <div class="task-toolbar">
           <div class="segmented"><button class="active" data-filter="all">All</button><button data-filter="today">Today</button><button data-filter="upcoming">Upcoming</button></div>
           <div class="task-toolbar-actions">
@@ -194,9 +260,10 @@
 
       <section class="view" id="calendarView" data-view="calendar">
         <div class="page-heading compact-page-heading">
-          <div><p class="eyebrow">Your time, clearly</p><h1>Calendar</h1></div>
+          <div><p class="eyebrow" id="calendarEyebrow">Your time, clearly</p><h1 id="calendarTitle">Calendar</h1></div>
           <div class="heading-actions"><button class="secondary-button" id="calendarTodayButton">Today</button><button class="primary-button" data-open-task>+ Schedule</button></div>
         </div>
+        <div class="view-tabs project-context-tabs" hidden><button data-project-switch="board">Board</button><button data-project-switch="tasks">List</button><button data-project-switch="calendar">Timeline</button></div>
         <div class="calendar-toolbar"><button class="icon-button" id="prevWeek" aria-label="Previous week"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><strong id="calendarMonth">May 19 – 25, 2025</strong><button class="icon-button" id="nextWeek" aria-label="Next week"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><div class="segmented"><button class="active">Week</button><button>Month</button></div></div>
         <div class="week-calendar panel" id="weekCalendar"></div>
       </section>
@@ -216,7 +283,145 @@
     </nav>
   </div>
 
+  <section class="onboarding-gate" id="onboardingGate" aria-labelledby="onboardingTitle" hidden>
+    <div class="onboarding-shell">
+      <header class="onboarding-brand"><span class="brand-mark" aria-hidden="true"><span></span></span><strong>maki</strong><span id="onboardingProgress">1 of 9</span></header>
+      <div class="onboarding-step" id="onboardingToolsStep">
+        <p class="eyebrow">Bring your work together</p>
+        <h1 id="onboardingTitle">What tools do you use?</h1>
+        <p class="onboarding-lede">Choose everything you use to track work. We’ll keep your setup focused on the services that matter to you.</p>
+        <div class="connector-grid" id="connectorGrid"></div>
+        <footer class="onboarding-actions"><button class="text-button" id="skipOnboardingButton">Skip for now</button><button class="primary-button" id="continueOnboardingButton">Continue <span>→</span></button></footer>
+      </div>
+      <div class="onboarding-step" id="onboardingConnectStep" hidden>
+        <p class="eyebrow">Plan around real life</p>
+        <h1 id="onboardingConnectTitle">What calendar do you use?</h1>
+        <p class="onboarding-lede">Maki syncs your schedule so your daily plan fits around the events already on your calendar.</p>
+        <div class="calendar-connector-list">
+          <button class="calendar-connector" id="onboardingGoogleButton">
+            <span class="calendar-provider-mark google">31</span>
+            <span><strong>Add Google Calendar</strong><small>Google will ask you to approve calendar access</small></span>
+            <span class="calendar-connector-action" id="onboardingGoogleStatus">Connect →</span>
+          </button>
+          <button class="calendar-connector" disabled aria-describedby="outlookComingSoon">
+            <span class="calendar-provider-mark outlook">O</span>
+            <span><strong>Add Outlook Calendar</strong><small id="outlookComingSoon">Coming soon</small></span>
+            <span class="calendar-connector-action">Unavailable</span>
+          </button>
+          <button class="calendar-connector" disabled aria-describedby="icloudComingSoon">
+            <span class="calendar-provider-mark icloud">17</span>
+            <span><strong>Add iCloud Calendar</strong><small id="icloudComingSoon">Coming soon</small></span>
+            <span class="calendar-connector-action">Unavailable</span>
+          </button>
+        </div>
+        <p class="calendar-permission-note">Maki only requests the calendar permissions needed to show events and schedule your tasks. You can disconnect anytime.</p>
+        <footer class="onboarding-actions"><button class="text-button" id="backOnboardingButton">← Back</button><button class="primary-button" id="continueCalendarButton">Skip for now →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-time-step" id="onboardingTimeStep" hidden>
+        <p class="eyebrow">Set your boundaries</p>
+        <h1 id="onboardingTimeTitle">What time do you start working?</h1>
+        <p class="onboarding-lede">Maki won’t schedule tasks before this time. You can adjust it day by day when planning.</p>
+        <label class="onboarding-time-field" for="onboardingWorkdayStart">
+          <span>Start of your workday</span>
+          <input type="time" id="onboardingWorkdayStart" value="09:00" step="900" required />
+        </label>
+        <div class="time-preset-row" aria-label="Common start times">
+          <button type="button" data-start-time="08:00">8:00</button>
+          <button type="button" data-start-time="08:30">8:30</button>
+          <button type="button" data-start-time="09:00" class="selected">9:00</button>
+          <button type="button" data-start-time="09:30">9:30</button>
+          <button type="button" data-start-time="10:00">10:00</button>
+        </div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToCalendarButton">← Back</button><button class="primary-button" id="continueWorkdayStartButton">Next →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-time-step" id="onboardingEndTimeStep" hidden>
+        <p class="eyebrow">Protect your evening</p>
+        <h1 id="onboardingEndTimeTitle">What time do you stop working?</h1>
+        <p class="onboarding-lede">Maki will try to help you finish your planned work by this time.</p>
+        <label class="onboarding-time-field" for="onboardingWorkdayEnd">
+          <span>End of your workday</span>
+          <input type="time" id="onboardingWorkdayEnd" value="17:00" step="900" required />
+        </label>
+        <div class="time-preset-row" aria-label="Common finish times">
+          <button type="button" data-end-time="15:00">3:00</button>
+          <button type="button" data-end-time="16:00">4:00</button>
+          <button type="button" data-end-time="17:00" class="selected">5:00</button>
+          <button type="button" data-end-time="17:30">5:30</button>
+          <button type="button" data-end-time="18:00">6:00</button>
+        </div>
+        <p class="workday-window-error" id="workdayWindowError" role="alert" hidden>Your finish time needs to be after your start time.</p>
+        <footer class="onboarding-actions"><button class="text-button" id="backToStartTimeButton">← Back</button><button class="primary-button" id="continueWorkdayEndButton">Next →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-routine-step" id="onboardingRoutineStep" hidden>
+        <p class="eyebrow">Build a calm ritual</p>
+        <h1 id="onboardingRoutineTitle">When do you plan your day?</h1>
+        <p class="onboarding-lede">Maki will shape your planning prompts around the routine that feels most natural to you.</p>
+        <div class="routine-choice-list" role="radiogroup" aria-label="Daily planning routine">
+          <button type="button" class="routine-choice selected" data-planning-ritual="start_of_day" role="radio" aria-checked="true">
+            <span><strong>The start of the day</strong><small>Plan with a fresh view of today</small></span><span class="routine-check">✓</span>
+          </button>
+          <button type="button" class="routine-choice" data-planning-ritual="night_before" role="radio" aria-checked="false">
+            <span><strong>The night before</strong><small>Close the day knowing tomorrow is ready</small></span><span class="routine-check">✓</span>
+          </button>
+        </div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToEndTimeButton">← Back</button><button class="primary-button" id="continueRoutineButton">Set my routine →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-choice-step" id="onboardingFirstDayStep" hidden>
+        <p class="eyebrow">Make the first plan real</p>
+        <h1 id="onboardingFirstDayTitle">Let’s plan your first day</h1>
+        <p class="onboarding-lede" id="onboardingFirstDayLede">Choose the day you want Maki to help you plan first.</p>
+        <div class="routine-choice-list" id="firstPlanDateChoices" role="radiogroup" aria-label="First day to plan"></div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToRoutineButton">← Back</button><button class="primary-button" id="continueFirstDayButton">Next →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-context-step" id="onboardingWorkContextStep" hidden>
+        <p class="eyebrow">Shape your workspace</p>
+        <h1 id="onboardingWorkContextTitle">Tell us a bit about the work you do</h1>
+        <p class="onboarding-lede">This helps Maki choose more useful defaults. It stays private to your workspace.</p>
+        <label class="onboarding-context-field" for="onboardingWorkContext">
+          <span>About your work</span>
+          <textarea id="onboardingWorkContext" maxlength="2000" rows="6" placeholder="I am a ________.&#10;I spend my time on things like ________."></textarea>
+        </label>
+        <div class="context-meta"><span id="workContextHint">A sentence or two is enough.</span><span id="workContextCount">0 / 2000</span></div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToFirstDayButton">← Back</button><button class="primary-button" id="continueWorkContextButton" disabled>Next →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-context-step" id="onboardingFirstGoalStep" hidden>
+        <p class="eyebrow">Give your first day a focus</p>
+        <h1 id="onboardingFirstGoalTitle">What do you want to accomplish <span id="firstGoalDayLabel">tomorrow</span>?</h1>
+        <p class="onboarding-lede">Maki will draft your first plan around this. Don’t overthink it—you can adjust everything later.</p>
+        <label class="onboarding-context-field" for="onboardingFirstGoal">
+          <span>Your main outcome</span>
+          <textarea id="onboardingFirstGoal" maxlength="2000" rows="6" placeholder="I want to work on…"></textarea>
+        </label>
+        <div class="context-meta"><span>One clear outcome is perfect.</span><span id="firstGoalCount">0 / 2000</span></div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToWorkContextButton">← Back</button><button class="primary-button" id="continueFirstGoalButton" disabled>Next →</button></footer>
+      </div>
+      <div class="onboarding-step onboarding-automation-step" id="onboardingAutomationStep" hidden>
+        <p class="eyebrow">Your smart defaults</p>
+        <h1 id="onboardingAutomationTitle">Let Maki handle the busywork</h1>
+        <p class="onboarding-lede">These reliable automations work without AI. You stay in control and can change every suggestion.</p>
+        <div class="automation-grid">
+          <article class="automation-card enabled"><span>✓</span><div><strong>Conflict-aware planning</strong><small>Fits tasks around calendar events.</small></div><em>On</em></article>
+          <article class="automation-card enabled"><span>✓</span><div><strong>Workday boundaries</strong><small>Keeps plans inside your chosen hours.</small></div><em>On</em></article>
+          <article class="automation-card enabled"><span>✓</span><div><strong>Duration suggestions</strong><small>Suggests a useful estimate from task wording.</small></div><em>On</em></article>
+          <article class="automation-card enabled"><span>✓</span><div><strong>Project suggestions</strong><small>Routes obvious tasks to the right project.</small></div><em>On</em></article>
+        </div>
+        <p class="automation-coming-label">Planned AI features</p>
+        <div class="automation-grid planned">
+          <article class="automation-card"><span>✦</span><div><strong>Maki assistant</strong><small>Review your backlog and plan by chat.</small></div><em>Planned</em></article>
+          <article class="automation-card"><span>◉</span><div><strong>Voice capture</strong><small>Add and adjust tasks by voice.</small></div><em>Planned</em></article>
+          <article class="automation-card"><span>↗</span><div><strong>Learned suggestions</strong><small>Adapt estimates from your work patterns.</small></div><em>Planned</em></article>
+        </div>
+        <footer class="onboarding-actions"><button class="text-button" id="backToFirstGoalButton">← Back</button><button class="primary-button" id="finishOnboardingButton">Start planning →</button></footer>
+      </div>
+    </div>
+  </section>
+
   <div class="overlay" id="overlay"></div>
+  <dialog class="workspace-utility-modal" id="workspaceUtilityModal" aria-labelledby="workspaceUtilityTitle">
+    <header><div><p class="eyebrow" id="workspaceUtilityKicker">Workspace</p><h2 id="workspaceUtilityTitle">Settings</h2></div><button type="button" class="icon-button" id="closeWorkspaceUtility" aria-label="Close">×</button></header>
+    <div id="workspaceUtilityBody"></div>
+  </dialog>
+
   <dialog class="task-modal" id="taskModal">
     <form method="dialog" id="taskForm">
       <div class="modal-header"><span class="modal-kicker">New task</span><button type="button" class="icon-button" id="closeModal" aria-label="Close">×</button></div>
@@ -238,14 +443,65 @@
           <select id="taskPriorityInput" hidden><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select>
           <div class="smart-select-menu" role="listbox" hidden></div>
         </div>
+        <div class="smart-select" data-task-select="taskDurationInput">
+          <button type="button" class="smart-select-trigger" aria-haspopup="listbox" aria-expanded="false"><span aria-hidden="true">◷</span><span data-select-label>30m</span><svg class="select-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></button>
+          <select id="taskDurationInput" hidden><option value="15">15m</option><option value="30" selected>30m</option><option value="45">45m</option><option value="60">60m</option><option value="90">90m</option></select>
+          <div class="smart-select-menu" role="listbox" hidden></div>
+        </div>
       </div>
+      <p class="smart-task-hint" id="smartTaskHint" aria-live="polite"></p>
       <div class="schedule-toggle"><div><strong>Block time on calendar</strong><small>Find a space in your day automatically</small></div><button type="button" class="switch" id="scheduleSwitch" role="switch" aria-checked="false"><span></span></button></div>
       <div class="modal-footer"><span>Press <kbd>⌘</kbd> + <kbd>Enter</kbd> to add</span><button class="primary-button" type="submit">Add task</button></div>
     </form>
   </dialog>
 
+  <dialog class="task-detail-modal" id="taskDetailModal" aria-labelledby="taskDetailTitle">
+    <div class="task-detail-shell">
+      <header class="task-detail-toolbar">
+        <button type="button" class="detail-project" id="detailProjectButton"><span class="project-dot coral" id="detailProjectDot"></span><span id="detailProjectLabel">Project</span></button>
+        <span class="toolbar-spacer"></span>
+        <div class="detail-popover-wrap">
+          <button type="button" class="detail-tool" id="detailPriorityButton" aria-haspopup="menu" aria-expanded="false"><span aria-hidden="true">⚑</span><span id="detailPriorityLabel">Normal</span></button>
+          <div class="detail-popover priority-popover" id="detailPriorityPopover" role="menu" hidden></div>
+        </div>
+        <div class="detail-popover-wrap">
+          <button type="button" class="detail-tool" id="detailDueButton" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">▣</span><span id="detailDueLabel">Due</span></button>
+          <div class="detail-popover calendar-popover" id="detailCalendarPopover" hidden>
+            <div class="calendar-popover-head"><button type="button" id="detailCalendarPrev" aria-label="Previous month">‹</button><strong id="detailCalendarMonth"></strong><button type="button" id="detailCalendarNext" aria-label="Next month">›</button></div>
+            <div class="calendar-weekdays"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            <div class="detail-calendar-grid" id="detailCalendarGrid"></div>
+            <button type="button" class="clear-detail-date" id="clearDetailDueDate">Clear due date</button>
+          </div>
+        </div>
+        <button type="button" class="detail-tool" id="detailSubtasksButton"><span aria-hidden="true">＋</span><span>Subtasks</span></button>
+        <button type="button" class="detail-tool detail-delete" id="detailDeleteButton"><span aria-hidden="true">⌫</span><span>Delete</span></button>
+        <button type="button" class="icon-button" id="closeTaskDetail" aria-label="Close task details">×</button>
+      </header>
+      <main class="task-detail-main">
+        <div class="task-detail-heading">
+          <button type="button" class="task-detail-check" id="detailCompleteButton" aria-label="Complete task"></button>
+          <input id="taskDetailTitle" maxlength="500" aria-label="Task title" />
+          <div class="detail-duration"><span>Planned</span><button type="button" id="taskDetailDurationButton" aria-label="Set planned duration" aria-haspopup="menu" aria-expanded="false">30m</button></div>
+        </div>
+        <textarea id="taskDetailNotes" rows="3" maxlength="5000" placeholder="Add notes…" aria-label="Task notes"></textarea>
+        <section class="detail-subtasks" id="detailSubtasksSection" hidden>
+          <div class="detail-section-title"><strong>Subtasks</strong><span id="detailSubtaskProgress">0 of 0</span></div>
+          <div class="detail-subtask-list" id="detailSubtaskList"></div>
+          <button type="button" class="add-detail-subtask" id="addDetailSubtask">＋ Add subtask</button>
+        </section>
+      </main>
+      <footer class="task-detail-footer"><span class="detail-activity-dot"></span><span id="taskDetailActivity">Task details</span></footer>
+      <div class="detail-popover duration-popover" id="detailDurationPopover" role="menu" aria-label="Planned duration" hidden>
+        <div class="duration-popover-head"><span>Planned</span><strong id="detailDurationCurrent">—</strong></div>
+        <div class="duration-popover-options" id="detailDurationOptions"></div>
+        <button type="button" class="clear-detail-duration" id="clearDetailDuration">Clear planned time</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog class="planning-modal" id="planningModal" aria-labelledby="planningTitle">
     <form method="dialog" id="planningForm">
+      <nav class="planning-progress" id="planningProgress" aria-label="First day planning progress" hidden></nav>
       <header class="planning-header">
         <div><span class="modal-kicker">Daily planning</span><h2 id="planningTitle">Make today realistic.</h2><p id="planningDateLabel"></p></div>
         <button type="button" class="icon-button" id="closePlanningButton" aria-label="Close planning">×</button>
@@ -262,6 +518,7 @@
       <div class="planning-layout">
         <section class="planning-pool" aria-labelledby="planningPoolTitle">
           <div class="planning-section-title"><div><span>1</span><strong id="planningPoolTitle">Choose what matters</strong></div><small>Today + backlog</small></div>
+          <div class="planning-connector-actions" id="planningConnectorActions" aria-label="Import tasks from your tools" hidden></div>
           <div class="planning-task-list" id="planningTaskList"></div>
         </section>
         <section class="planning-schedule" aria-labelledby="planningScheduleTitle">
@@ -269,9 +526,44 @@
           <div class="planning-slots" id="planningSlots"></div>
         </section>
       </div>
+      <section class="planning-document" id="planningDocument" aria-labelledby="planningDocumentTitle" hidden>
+        <header><h3 id="planningDocumentTitle">Daily plan</h3><p id="planningDocumentSubtitle">Document and share your plan.</p></header>
+        <div class="planning-document-grid">
+          <div class="planning-note-card">
+            <h4 id="planningDocumentDay">Planned tasks</h4>
+            <ul id="planningDocumentTasks"></ul>
+            <label for="planningObstacles"><strong>Obstacles in my way</strong><span>Optional</span></label>
+            <textarea id="planningObstacles" rows="4" maxlength="2000" placeholder="Anything that could get in the way?"></textarea>
+          </div>
+          <aside class="planning-document-preview" id="planningDocumentPreview" aria-label="Schedule preview"></aside>
+        </div>
+      </section>
+      <div class="planning-share-overlay" id="planningShareOverlay" hidden>
+        <section class="planning-share-panel" role="dialog" aria-modal="true" aria-labelledby="planningShareTitle">
+          <h3 id="planningShareTitle">Sharing destinations</h3>
+          <div class="sharing-destination">
+            <span class="sharing-destination-icon maki-share-icon" aria-hidden="true"><i></i></span>
+            <div><strong>Maki</strong><small>Save in your daily planning notes</small></div>
+            <button type="button" class="switch on" id="shareToMaki" role="switch" aria-checked="true" aria-label="Save in Maki"><span></span></button>
+          </div>
+          <div class="sharing-destination">
+            <span class="sharing-destination-icon email-share-icon" aria-hidden="true">M</span>
+            <div><strong id="sharingEmailLabel">Email me a copy</strong><small>Email yourself a copy</small></div>
+            <button type="button" class="switch" id="shareToEmail" role="switch" aria-checked="false" aria-label="Email me a copy"><span></span></button>
+          </div>
+          <button type="button" class="add-sharing-destination" id="addSharingDestination"><span>＋</span><span><strong>Add destination</strong><small>Share via email, Slack, or Teams</small></span></button>
+          <div class="sharing-destination-form" id="sharingDestinationForm" hidden>
+            <input type="email" id="sharingDestinationEmail" placeholder="teammate@example.com" aria-label="Destination email" />
+            <button type="button" class="secondary-button" id="saveSharingDestination">Add email</button>
+            <span>Slack and Teams coming soon</span>
+          </div>
+          <div class="sharing-added-destinations" id="sharingAddedDestinations"></div>
+          <button type="button" class="secondary-button sharing-done" id="closePlanningShare">Done</button>
+        </section>
+      </div>
       <footer class="planning-footer">
         <p id="planningHint">Select tasks, then let Maki fit them around your calendar.</p>
-        <div><button type="button" class="secondary-button" id="cancelPlanningButton">Cancel</button><button type="submit" class="primary-button" id="commitPlanningButton">Commit plan</button></div>
+        <div><button type="button" class="secondary-button" id="cancelPlanningButton">Cancel</button><button type="button" class="secondary-button" id="sharePlanningButton" hidden>↗ Share</button><button type="button" class="primary-button" id="planningNextButton" hidden>Next →</button><button type="submit" class="primary-button" id="commitPlanningButton">Commit plan</button></div>
       </footer>
     </form>
   </dialog>

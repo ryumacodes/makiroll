@@ -3,6 +3,8 @@ import { getAuthState, getSupabaseClient } from './supabase.js';
 const LOCAL_TASKS_KEY = 'maki-tasks';
 const LOCAL_FILTERS_KEY = 'maki-saved-filters';
 const LOCAL_PLANS_KEY = 'maki-daily-plans';
+const LOCAL_ONBOARDING_KEY = 'maki-onboarding';
+const LOCAL_TASK_EXTRAS_KEY = 'maki-task-extras';
 const STARTER_PROJECTS = [
   { name: 'Studio relaunch', color: 'coral', position: 0 },
   { name: 'Home', color: 'sage', position: 1 },
@@ -64,8 +66,22 @@ const formatTime = scheduledAt => {
   return `${hour}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
+const taskExtras = () => {
+  const userId = getAuthState().user?.id || 'local';
+  return JSON.parse(localStorage.getItem(`${LOCAL_TASK_EXTRAS_KEY}:${userId}`) || '{}');
+};
+
+const saveTaskExtra = (taskId, changes) => {
+  const userId = getAuthState().user?.id || 'local';
+  const key = `${LOCAL_TASK_EXTRAS_KEY}:${userId}`;
+  const extras = JSON.parse(localStorage.getItem(key) || '{}');
+  extras[taskId] = { ...(extras[taskId] || {}), ...changes };
+  localStorage.setItem(key, JSON.stringify(extras));
+};
+
 const normaliseTask = row => {
   const project = row.project || projects.find(item => item.id === row.project_id);
+  const extras = taskExtras()[row.id] || {};
   return ({
   id: row.id,
   title: row.title,
@@ -82,7 +98,8 @@ const normaliseTask = row => {
   status: row.status,
   priority: row.priority,
   completedAt: row.completed_at,
-  position: row.position || 0
+  position: row.position || 0,
+  subtasks: Array.isArray(row.subtasks) ? row.subtasks : (extras.subtasks || [])
   });
 };
 
@@ -109,21 +126,22 @@ function localWorkspace(fallbackTasks) {
   return { mode: 'local', tasks: localTasks, projects, savedFilters };
 }
 
-async function ensureProjects(client) {
-  let { data, error } = await client.from('projects').select('id,name,color,position').is('archived_at', null).order('position');
+async function ensureProjects(client, userId) {
+  let { data, error } = await client.from('projects').select('id,name,color,position').eq('user_id', userId).is('archived_at', null).order('position');
   if (error) throw error;
   if (data.length) return data;
 
-  ({ data, error } = await client.from('projects').insert(STARTER_PROJECTS).select('id,name,color,position'));
+  ({ data, error } = await client.from('projects').insert(STARTER_PROJECTS.map(project => ({ ...project, user_id: userId }))).select('id,name,color,position'));
   if (error) throw error;
   return data;
 }
 
-async function seedTasks(client, fallbackTasks, projectRows) {
+async function seedTasks(client, fallbackTasks, projectRows, userId) {
   if (!fallbackTasks.length) return [];
   const projectIds = new Map(projectRows.map(project => [project.name, project.id]));
   const rows = fallbackTasks.map((task, index) => ({
     ...taskToRow({ ...task, position: index }, projectIds.get(task.project)),
+    user_id: userId,
     position: index
   }));
   const { data, error } = await client.from('tasks').insert(rows).select('*,project:projects(id,name,color)');
@@ -136,21 +154,91 @@ export async function loadWorkspace(fallbackTasks = []) {
   const { configured, user } = getAuthState();
   if (!configured || !client || !user) return localWorkspace(fallbackTasks);
 
-  projects = await ensureProjects(client);
+  // Synced workspaces never share task caches through browser localStorage.
+  localStorage.removeItem(LOCAL_TASKS_KEY);
+  localStorage.removeItem(LOCAL_FILTERS_KEY);
+  localStorage.removeItem(LOCAL_PLANS_KEY);
+
+  projects = await ensureProjects(client, user.id);
   let { data: taskRows, error: taskError } = await client
     .from('tasks')
     .select('*,project:projects(id,name,color)')
+    .eq('user_id', user.id)
     .neq('status', 'archived')
     .order('position');
   if (taskError) throw taskError;
-  if (!taskRows.length) taskRows = await seedTasks(client, fallbackTasks, projects);
+  if (!taskRows.length) taskRows = await seedTasks(client, fallbackTasks, projects, user.id);
 
-  const { data: filterRows, error: filterError } = await client.from('saved_filters').select('*').order('position');
+  const { data: filterRows, error: filterError } = await client.from('saved_filters').select('*').eq('user_id', user.id).order('position');
   if (filterError) throw filterError;
   savedFilters = filterRows;
 
-  localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(taskRows.map(normaliseTask)));
   return { mode: 'remote', tasks: taskRows.map(normaliseTask), projects, savedFilters };
+}
+
+export async function loadOnboardingPreferences() {
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  if (!configured || !client || !user) return JSON.parse(localStorage.getItem(LOCAL_ONBOARDING_KEY) || 'null');
+  const fields = 'selected_providers,workday_start,workday_end,planning_ritual,first_plan_date,work_context,first_day_goal,automation_settings,completed_at';
+  let { data, error } = await client.from('onboarding_preferences').select(fields).eq('user_id', user.id).maybeSingle();
+  if (error && ['PGRST204', '42703'].includes(error.code)) {
+    ({ data, error } = await client.from('onboarding_preferences')
+      .select('selected_providers,workday_start,workday_end,planning_ritual,completed_at').eq('user_id', user.id).maybeSingle());
+    data = { ...(data || {}), ...(JSON.parse(localStorage.getItem(LOCAL_ONBOARDING_KEY) || 'null') || {}) };
+  }
+  if (error) throw error;
+  return data;
+}
+
+export async function saveOnboardingPreferences(selectedProviders, {
+  completed = false,
+  workdayStart = '09:00',
+  workdayEnd = '17:00',
+  planningRitual = 'start_of_day',
+  firstPlanDate = null,
+  workContext = '',
+  firstDayGoal = '',
+  automationSettings = { conflict_aware_planning: true, workday_boundaries: true, duration_suggestions: true, project_suggestions: true }
+} = {}) {
+  const providers = [...new Set(selectedProviders)].slice(0, 24);
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  const preferences = {
+    selected_providers: providers,
+    workday_start: workdayStart,
+    workday_end: workdayEnd,
+    planning_ritual: planningRitual,
+    first_plan_date: firstPlanDate,
+    work_context: String(workContext || '').trim().slice(0, 2000),
+    first_day_goal: String(firstDayGoal || '').trim().slice(0, 2000),
+    automation_settings: automationSettings,
+    completed_at: completed ? new Date().toISOString() : null
+  };
+  if (!configured || !client || !user) {
+    localStorage.setItem(LOCAL_ONBOARDING_KEY, JSON.stringify(preferences));
+    return preferences;
+  }
+  let { data, error } = await client.from('onboarding_preferences')
+    .upsert({ user_id: user.id, ...preferences, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+    .select('selected_providers,workday_start,workday_end,planning_ritual,first_plan_date,work_context,first_day_goal,automation_settings,completed_at').single();
+  if (error && ['PGRST204', '42703'].includes(error.code)) {
+    localStorage.setItem(LOCAL_ONBOARDING_KEY, JSON.stringify(preferences));
+    const legacy = {
+      selected_providers: providers,
+      workday_start: workdayStart,
+      workday_end: workdayEnd,
+      planning_ritual: planningRitual,
+      completed_at: preferences.completed_at,
+      updated_at: new Date().toISOString()
+    };
+    ({ data, error } = await client.from('onboarding_preferences')
+      .upsert({ user_id: user.id, ...legacy }, { onConflict: 'user_id' })
+      .select('selected_providers,workday_start,workday_end,planning_ritual,completed_at').single());
+    data = { ...(data || {}), ...preferences };
+  }
+  if (error) throw error;
+  return data;
 }
 
 export async function createTask(task) {
@@ -162,7 +250,7 @@ export async function createTask(task) {
   const project = projects.find(item => item.name === task.project || item.id === task.projectId);
   const { data, error } = await client
     .from('tasks')
-    .insert(taskToRow(task, project?.id))
+    .insert({ ...taskToRow(task, project?.id), user_id: user.id })
     .select('*,project:projects(id,name,color)')
     .single();
   if (error) throw error;
@@ -186,7 +274,22 @@ export async function updateTask(id, changes) {
   if ('dueDate' in changes) row.due_date = changes.dueDate;
   if ('scheduledAt' in changes) row.scheduled_at = changes.scheduledAt;
   if ('plannedMinutes' in changes) row.planned_minutes = changes.plannedMinutes;
-  const { error } = await client.from('tasks').update(row).eq('id', id);
+  if ('subtasks' in changes) row.subtasks = changes.subtasks;
+  let { error } = await client.from('tasks').update(row).eq('id', id).eq('user_id', user.id);
+  if (error && ['PGRST204', '42703'].includes(error.code) && 'subtasks' in row) {
+    saveTaskExtra(id, { subtasks: changes.subtasks });
+    delete row.subtasks;
+    if (!Object.keys(row).length) return;
+    ({ error } = await client.from('tasks').update(row).eq('id', id).eq('user_id', user.id));
+  }
+  if (error) throw error;
+}
+
+export async function deleteTask(id) {
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  if (!configured || !client || !user) return;
+  const { error } = await client.from('tasks').delete().eq('id', id).eq('user_id', user.id);
   if (error) throw error;
 }
 
@@ -199,7 +302,7 @@ export async function createSavedFilter(name, definition) {
     localStorage.setItem(LOCAL_FILTERS_KEY, JSON.stringify(savedFilters));
     return filter;
   }
-  const { data, error } = await client.from('saved_filters').insert({ name, definition, position: savedFilters.length }).select().single();
+  const { data, error } = await client.from('saved_filters').insert({ user_id: user.id, name, definition, position: savedFilters.length }).select().single();
   if (error) throw error;
   savedFilters = [...savedFilters, data];
   return data;
@@ -213,7 +316,7 @@ export async function deleteSavedFilter(id) {
     localStorage.setItem(LOCAL_FILTERS_KEY, JSON.stringify(savedFilters));
     return;
   }
-  const { error } = await client.from('saved_filters').delete().eq('id', id);
+  const { error } = await client.from('saved_filters').delete().eq('id', id).eq('user_id', user.id);
   if (error) throw error;
 }
 
@@ -233,7 +336,7 @@ export async function loadDailyPlan(planDate) {
     const plans = JSON.parse(localStorage.getItem(LOCAL_PLANS_KEY) || '{}');
     return plans[planDate] || null;
   }
-  const { data, error } = await client.from('daily_plans').select('*').eq('plan_date', planDate).maybeSingle();
+  const { data, error } = await client.from('daily_plans').select('*').eq('user_id', user.id).eq('plan_date', planDate).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -274,12 +377,18 @@ export async function commitDayPlan({ planDate, workdayStart, workdayEnd, items 
   const { data: rows, error: taskError } = await client
     .from('tasks')
     .select('*,project:projects(id,name,color)')
+    .eq('user_id', user.id)
     .in('id', ids);
   if (taskError) throw taskError;
   return { plan, tasks: (rows || []).map(normaliseTask) };
 }
 
 export function persistLocalTasks(tasks) {
+  const { configured, user } = getAuthState();
+  if (configured && user) {
+    localStorage.removeItem(LOCAL_TASKS_KEY);
+    return;
+  }
   localStorage.setItem(LOCAL_TASKS_KEY, JSON.stringify(tasks));
 }
 

@@ -1,4 +1,4 @@
-import { getSupabaseClient } from './supabase.js';
+import { getAuthState, getSupabaseClient } from './supabase.js';
 
 let syncTimer = null;
 let syncInFlight = null;
@@ -31,10 +31,12 @@ export async function syncGoogleCalendar() {
 
 export async function loadCalendarEvents(rangeStart, rangeEnd) {
   const client = getSupabaseClient();
-  if (!client) return [];
+  const { user } = getAuthState();
+  if (!client || !user) return [];
   const { data, error } = await client
     .from('calendar_events')
     .select('*')
+    .eq('user_id', user.id)
     .neq('status', 'cancelled')
     .lt('starts_at', rangeEnd.toISOString())
     .gt('ends_at', rangeStart.toISOString())

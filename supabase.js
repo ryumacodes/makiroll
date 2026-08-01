@@ -10,6 +10,7 @@ let currentUser = null;
 // will move them into a server-side encrypted store, never localStorage.
 let googleProviderToken = null;
 let googleProviderRefreshToken = null;
+const calendarConsentPending = () => sessionStorage.getItem('maki-google-calendar-consent') === 'pending';
 
 if (configured) {
   client = createClient(supabaseUrl, supabasePublishableKey, {
@@ -39,8 +40,8 @@ export async function initAuth({ onReady }) {
 
   client.auth.onAuthStateChange((_event, session) => {
     currentUser = session?.user || null;
-    if (session?.provider_token) googleProviderToken = session.provider_token;
-    if (session?.provider_refresh_token) googleProviderRefreshToken = session.provider_refresh_token;
+    if (calendarConsentPending() && session?.provider_token) googleProviderToken = session.provider_token;
+    if (calendarConsentPending() && session?.provider_refresh_token) googleProviderRefreshToken = session.provider_refresh_token;
     onReady({
       configured: true,
       user: currentUser,
@@ -62,11 +63,11 @@ export async function initAuth({ onReady }) {
 
   const { data, error } = await client.auth.getSession();
   currentUser = data.session?.user || null;
-  if (data.session?.provider_token) googleProviderToken = data.session.provider_token;
-  if (data.session?.provider_refresh_token) googleProviderRefreshToken = data.session.provider_refresh_token;
+  if (calendarConsentPending() && data.session?.provider_token) googleProviderToken = data.session.provider_token;
+  if (calendarConsentPending() && data.session?.provider_refresh_token) googleProviderRefreshToken = data.session.provider_refresh_token;
 
   if (currentUser && ['/auth/callback', '/auth/confirm'].includes(window.location.pathname)) {
-    window.history.replaceState({}, document.title, '/');
+    window.history.replaceState({}, document.title, '/app');
   }
 
   onReady({
@@ -78,18 +79,16 @@ export async function initAuth({ onReady }) {
   });
 }
 
-const googleOptions = () => ({
+const googleOptions = (calendarAccess = false) => ({
   redirectTo: `${window.location.origin}/auth/callback`,
-  scopes: [
-    'openid',
-    'email',
-    'profile',
+  scopes: (calendarAccess ? [
+    'openid', 'email', 'profile',
     'https://www.googleapis.com/auth/calendar.events',
     'https://www.googleapis.com/auth/calendar.calendarlist.readonly'
-  ].join(' '),
+  ] : ['openid', 'email', 'profile']).join(' '),
   queryParams: {
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: calendarAccess ? 'consent' : 'select_account',
     include_granted_scopes: 'true'
   }
 });
@@ -99,7 +98,7 @@ export async function signInWithGoogle() {
 
   const { error } = await client.auth.signInWithOAuth({
     provider: 'google',
-    options: googleOptions()
+    options: googleOptions(false)
   });
 
   return error;
@@ -120,16 +119,22 @@ export async function signInWithMagicLink(email) {
 export async function connectGoogleCalendar() {
   if (!client) return new Error('Supabase is not configured.');
   if (!currentUser) return signInWithGoogle();
-  const { error } = await client.auth.linkIdentity({
-    provider: 'google',
-    options: googleOptions()
-  });
+  sessionStorage.setItem('maki-google-calendar-consent', 'pending');
+  const hasGoogleIdentity = currentUser.identities?.some(identity => identity.provider === 'google');
+  const method = hasGoogleIdentity ? 'signInWithOAuth' : 'linkIdentity';
+  const { error } = await client.auth[method]({ provider: 'google', options: googleOptions(true) });
+  if (error) sessionStorage.removeItem('maki-google-calendar-consent');
   return error;
+}
+
+export function completeGoogleCalendarConsent() {
+  sessionStorage.removeItem('maki-google-calendar-consent');
 }
 
 export async function signOut() {
   if (!client) return;
   googleProviderToken = null;
   googleProviderRefreshToken = null;
+  sessionStorage.removeItem('maki-google-calendar-consent');
   await client.auth.signOut();
 }
