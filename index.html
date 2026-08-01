@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#101113" />
+  <title>maki — tasks meet time</title>
+  <link rel="icon" href="/maki.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand-row">
+        <button class="brand" data-view-target="today" aria-label="maki home">
+          <span class="brand-mark"><span></span></span>
+          <span>maki</span>
+        </button>
+        <button class="icon-button sidebar-collapse" aria-label="Collapse sidebar" data-tooltip="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+      </div>
+
+      <button class="quick-add" id="quickAddButton">
+        <span class="plus">+</span><span>New task</span><kbd>N</kbd>
+      </button>
+
+      <nav class="nav-groups">
+        <div class="nav-group">
+          <button class="nav-item active" data-view-target="today">
+            <svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg>
+            <span>Today</span><span class="nav-count" id="todayCount">4</span>
+          </button>
+          <button class="nav-item" data-view-target="upcoming">
+            <svg viewBox="0 0 24 24"><path d="M5 3v4M19 3v4M3 11h18M4 5h16v16H4zM8 15h.01M12 15h.01M16 15h.01"/></svg>
+            <span>Upcoming</span>
+          </button>
+          <button class="nav-item" data-view-target="tasks">
+            <svg viewBox="0 0 24 24"><path d="m4 7 2 2 4-4M12 7h8M4 13l2 2 4-4m2 2h8M4 19l2 2 4-4m2 2h8"/></svg>
+            <span>All tasks</span><span class="nav-count" id="allCount">12</span>
+          </button>
+          <button class="nav-item" data-view-target="calendar">
+            <svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg>
+            <span>Calendar</span>
+          </button>
+        </div>
+
+        <div class="nav-group projects-nav">
+          <div class="nav-label"><span>Projects</span><button id="addProjectButton" aria-label="Add project">+</button></div>
+          <button class="nav-item" data-project="Studio relaunch" data-view-target="board"><span class="project-dot coral"></span><span>Studio relaunch</span><span class="nav-count">5</span></button>
+          <button class="nav-item" data-project="Home" data-view-target="board"><span class="project-dot sage"></span><span>Home</span><span class="nav-count">3</span></button>
+          <button class="nav-item" data-project="Personal" data-view-target="board"><span class="project-dot blue"></span><span>Personal</span><span class="nav-count">4</span></button>
+        </div>
+        <div class="nav-group smart-views-nav">
+          <div class="nav-label"><span>Smart views</span></div>
+          <button class="nav-item" data-smart-view="high"><svg viewBox="0 0 24 24"><path d="M5 21V4m0 0h11l-2 4 2 4H5"/></svg><span>High priority</span></button>
+          <button class="nav-item" data-smart-view="unscheduled"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Unscheduled</span></button>
+          <div id="savedFilterNav"></div>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="nav-item sync-row" id="syncButton">
+          <svg viewBox="0 0 24 24"><path d="M20 7h-7V0M4 17h7v7M20 7a9 9 0 0 0-15-3L2 7m2 10a9 9 0 0 0 15 3l3-3"/></svg>
+          <span>Google Calendar</span><span class="sync-dot"></span>
+        </button>
+        <button class="profile-row">
+          <span class="avatar">AS</span>
+          <span><strong>Alex Smith</strong><small>alex@maki.app</small></span>
+          <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="mobileMenu" aria-label="Open navigation">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="topbar-date"><span id="topbarDay">Thursday</span><span class="date-dot">·</span><span id="topbarDate">May 22</span></div>
+        <div class="topbar-actions">
+          <button class="focus-button" id="focusButton"><span class="focus-orb"></span>Focus</button>
+          <button class="icon-button theme-button" id="themeButton" aria-label="Switch to light mode" data-tooltip="Toggle theme">
+            <svg class="sun-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+          </button>
+          <button class="icon-button" id="searchButton" aria-label="Search" data-tooltip="Search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          </button>
+          <button class="icon-button notification-button" aria-label="Notifications" data-tooltip="Notifications">
+            <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span></span>
+          </button>
+        </div>
+      </header>
+
+      <section class="view active" id="todayView" data-view="today">
+        <div class="page-heading today-heading">
+          <div>
+            <p class="eyebrow">Your daily plan</p>
+            <h1>Good morning, Alex.</h1>
+            <p class="heading-subtitle">A thoughtful day starts with a little space.</p>
+          </div>
+          <div class="day-progress">
+            <div class="progress-ring" style="--progress: 38"><span>3<small>/ 8</small></span></div>
+            <p><strong>3 tasks done</strong><small>Keep the momentum</small></p>
+          </div>
+        </div>
+
+        <div class="today-layout">
+          <section class="panel agenda-panel">
+            <div class="section-heading">
+              <div><h2>Today</h2><span class="pill-count" id="agendaCount">4 tasks</span></div>
+              <button class="text-button" id="planDayButton">Plan my day <span>→</span></button>
+            </div>
+            <div class="timeline" id="timeline"></div>
+          </section>
+
+          <aside class="right-rail">
+            <section class="panel next-up-card">
+              <div class="section-heading compact"><h2>Next up</h2><span class="live-pill"><i></i> In 24 min</span></div>
+              <div class="next-event">
+                <div class="event-time"><strong>10:30</strong><span>AM</span></div>
+                <div class="event-details"><span class="event-tag coral-bg">Studio relaunch</span><h3>Homepage critique</h3><p><span class="mini-avatar">MJ</span> Maya &amp; 2 others</p></div>
+              </div>
+              <button class="join-button">Join Google Meet <svg viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></button>
+            </section>
+
+            <section class="panel habits-card">
+              <div class="section-heading compact"><h2>Daily rhythm</h2><button class="icon-button small" aria-label="More options"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+              <div class="rhythm-row"><span class="rhythm-icon">☀</span><div><strong>Morning planning</strong><small>7 day streak</small></div><button class="habit-check done" aria-label="Mark incomplete">✓</button></div>
+              <div class="rhythm-row"><span class="rhythm-icon">◒</span><div><strong>Evening shutdown</strong><small>At 5:30 PM</small></div><button class="habit-check" aria-label="Mark complete"></button></div>
+            </section>
+
+            <section class="insight-card">
+              <span class="sparkle">✦</span>
+              <div><strong>You protected 2h 30m</strong><p>of focus time this week. Nice.</p></div>
+              <button aria-label="Dismiss">×</button>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="boardView" data-view="board">
+        <div class="page-heading board-heading">
+          <div><p class="eyebrow">Project</p><h1 id="boardTitle">Studio relaunch</h1><p class="heading-subtitle">Everything moving the new studio forward.</p></div>
+          <div class="heading-actions"><button class="secondary-button">Share</button><button class="primary-button" data-open-task>+ Add task</button></div>
+        </div>
+        <div class="view-tabs"><button class="active">Board</button><button data-switch="tasks">List</button><button data-switch="calendar">Timeline</button></div>
+        <div class="kanban" id="kanbanBoard"></div>
+      </section>
+
+      <section class="view" id="tasksView" data-view="tasks">
+        <div class="page-heading compact-page-heading">
+          <div><p class="eyebrow">Everything, in one place</p><h1>All tasks</h1></div>
+          <button class="primary-button" data-open-task>+ Add task</button>
+        </div>
+        <div class="task-toolbar">
+          <div class="segmented"><button class="active" data-filter="all">All</button><button data-filter="today">Today</button><button data-filter="upcoming">Upcoming</button></div>
+          <div class="task-toolbar-actions">
+            <label class="task-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="taskSearchInput" type="search" placeholder="Search tasks…" /><kbd>⌘K</kbd></label>
+            <button class="filter-button" id="filterButton"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg> Filter <span id="filterBadge" hidden>0</span></button>
+          </div>
+        </div>
+        <section class="filter-panel panel" id="filterPanel" hidden aria-label="Task filters">
+          <div class="filter-grid">
+            <label><span>Project</span><select id="projectFilter"><option value="all">All projects</option></select></label>
+            <label><span>Priority</span><select id="priorityFilter"><option value="all">Any priority</option><option value="important">High or urgent</option><option value="urgent">Urgent</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+            <label><span>Status</span><select id="statusFilter"><option value="all">Any status</option><option value="open">Open tasks</option><option value="todo">To do</option><option value="progress">In progress</option><option value="done">Completed</option></select></label>
+            <label><span>Schedule</span><select id="dueFilter"><option value="all">Any date</option><option value="overdue">Overdue</option><option value="today">Today</option><option value="upcoming">Upcoming</option><option value="unscheduled">Unscheduled</option></select></label>
+          </div>
+          <div class="filter-footer">
+            <button class="text-button muted-text-button" id="resetFilterButton">Reset filters</button>
+            <div class="save-filter-control" id="saveFilterControl">
+              <button class="secondary-button" id="showSaveFilterButton">Save as smart view</button>
+              <div class="save-filter-row" id="saveFilterRow" hidden><input id="filterNameInput" maxlength="80" placeholder="View name" /><button class="primary-button" id="confirmSaveFilterButton">Save</button></div>
+            </div>
+          </div>
+        </section>
+        <div class="active-filter-row" id="activeFilterRow"></div>
+        <p class="results-summary" id="resultsSummary"></p>
+        <div class="task-list panel" id="taskList"></div>
+      </section>
+
+      <section class="view" id="calendarView" data-view="calendar">
+        <div class="page-heading compact-page-heading">
+          <div><p class="eyebrow">Your time, clearly</p><h1>Calendar</h1></div>
+          <div class="heading-actions"><button class="secondary-button" id="calendarTodayButton">Today</button><button class="primary-button" data-open-task>+ Schedule</button></div>
+        </div>
+        <div class="calendar-toolbar"><button class="icon-button" id="prevWeek" aria-label="Previous week"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><strong id="calendarMonth">May 19 – 25, 2025</strong><button class="icon-button" id="nextWeek" aria-label="Next week"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><div class="segmented"><button class="active">Week</button><button>Month</button></div></div>
+        <div class="week-calendar panel" id="weekCalendar"></div>
+      </section>
+
+      <section class="view" id="upcomingView" data-view="upcoming">
+        <div class="page-heading compact-page-heading"><div><p class="eyebrow">Looking ahead</p><h1>Upcoming</h1><p class="heading-subtitle">The next seven days, without the noise.</p></div><button class="primary-button" data-open-task>+ Add task</button></div>
+        <div class="upcoming-list" id="upcomingList"></div>
+      </section>
+    </main>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="active" data-view-target="today"><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg><span>Today</span></button>
+      <button data-view-target="tasks"><svg viewBox="0 0 24 24"><path d="m4 7 2 2 4-4M12 7h8M4 13l2 2 4-4m2 2h8"/></svg><span>Tasks</span></button>
+      <button class="mobile-add" data-open-task aria-label="Add task"><span>+</span></button>
+      <button data-view-target="calendar"><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg><span>Calendar</span></button>
+      <button data-view-target="board"><svg viewBox="0 0 24 24"><path d="M4 4h6v16H4zM14 4h6v10h-6z"/></svg><span>Board</span></button>
+    </nav>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+  <dialog class="task-modal" id="taskModal">
+    <form method="dialog" id="taskForm">
+      <div class="modal-header"><span class="modal-kicker">New task</span><button type="button" class="icon-button" id="closeModal" aria-label="Close">×</button></div>
+      <input class="task-title-input" id="taskTitleInput" name="title" placeholder="What needs doing?" autocomplete="off" required />
+      <textarea id="taskNotesInput" name="notes" placeholder="Add a note…" rows="2"></textarea>
+      <div class="smart-inputs">
+        <label><svg viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></svg><select id="taskDateInput"><option value="today">Today</option><option value="tomorrow">Tomorrow</option><option value="friday">Friday</option><option value="someday">No date</option></select></label>
+        <label><span class="project-dot coral"></span><select id="taskProjectInput"><option>Studio relaunch</option><option>Home</option><option>Personal</option></select></label>
+        <label><span class="flag-icon">⚑</span><select id="taskPriorityInput"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></label>
+      </div>
+      <div class="schedule-toggle"><div><strong>Block time on calendar</strong><small>Find a space in your day automatically</small></div><button type="button" class="switch" id="scheduleSwitch" role="switch" aria-checked="false"><span></span></button></div>
+      <div class="modal-footer"><span>Press <kbd>⌘</kbd> + <kbd>Enter</kbd> to add</span><button class="primary-button" type="submit">Add task</button></div>
+    </form>
+  </dialog>
+
+  <div class="command-palette" id="commandPalette" aria-hidden="true">
+    <div class="search-input"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="globalSearch" placeholder="Search tasks and projects…" /><kbd>esc</kbd></div>
+    <div class="search-results" id="searchResults"><p>Jump to</p><button data-view-target="today"><span>Today</span><kbd>G T</kbd></button><button data-view-target="tasks"><span>All tasks</span><kbd>G A</kbd></button><button data-view-target="calendar"><span>Calendar</span><kbd>G C</kbd></button></div>
+  </div>
+
+  <div class="toast" id="toast"><span class="toast-icon">✓</span><span id="toastText">Task added</span></div>
+  <div class="focus-overlay" id="focusOverlay">
+    <button class="focus-close" id="focusClose">×</button>
+    <div class="focus-content"><span class="focus-label">FOCUS SESSION</span><p>Homepage visual QA</p><div class="focus-timer" id="focusTimer">25:00</div><button id="focusToggle">Pause</button><small>Studio relaunch · Today</small></div>
+  </div>
+
+  <section class="auth-gate" id="authGate" aria-labelledby="authTitle" hidden>
+    <div class="auth-card">
+      <span class="brand auth-brand"><span class="brand-mark"><span></span></span><span>maki</span></span>
+      <p class="eyebrow">Tasks meet time</p>
+      <h1 id="authTitle">Your week,<br />finally in one place.</h1>
+      <p>Plan tasks, shape your calendar, and keep every project moving without fighting your tools.</p>
+      <button class="google-button" id="googleSignInButton">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.3h5.4a4.6 4.6 0 0 1-2 3v2.8h3.7c2.2-2 3.5-4.9 3.5-7.9Z"/><path d="M12 22c2.7 0 5-.9 6.7-2.3L15 16.9c-1 .7-2.3 1.1-3.8 1.1-2.6 0-4.8-1.8-5.6-4.1H1.8v2.9A10.1 10.1 0 0 0 12 22Z"/><path d="M5.6 13.9a6 6 0 0 1 0-3.8V7.2H1.8a10.1 10.1 0 0 0 0 9.6l3.8-2.9Z"/><path d="M12 6c1.6 0 3 .5 4.1 1.6l3.1-3A10.3 10.3 0 0 0 1.8 7.2l3.8 2.9C6.4 7.8 8.6 6 12 6Z"/></svg>
+        Continue with Google
+      </button>
+      <small>By continuing, you agree to let maki connect your Google Calendar. You stay in control of your data.</small>
+      <div class="auth-status" id="authStatus" role="status"></div>
+    </div>
+    <div class="auth-preview" aria-hidden="true">
+      <div class="preview-date"><span>Today</span><strong>4 things worth doing</strong></div>
+      <div class="preview-block accent-block"><small>9:00</small><span>Homepage visual QA</span></div>
+      <div class="preview-block coral-block"><small>10:30</small><span>Homepage critique</span></div>
+      <div class="preview-block muted-block"><small>12:00</small><span>Write launch email</span></div>
+    </div>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
