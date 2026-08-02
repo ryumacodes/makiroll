@@ -2475,7 +2475,7 @@ $('#magicLinkForm').addEventListener('submit', async event => {
 });
 
 initAuth({
-  onReady: async ({ user, providerToken, providerRefreshToken, error }) => {
+  onReady: async ({ configured, user, providerToken, providerRefreshToken, error }) => {
     let workspaceRoute = window.location.pathname === '/app';
     if (workspaceRoute && !user) {
       window.history.replaceState({}, document.title, '/');
@@ -2484,6 +2484,11 @@ initAuth({
     $('#authGate').hidden = false;
     $('.app-shell').hidden = true;
     if (error) $('#authStatus').textContent = error.message;
+    if (!configured) {
+      $('#authStatus').textContent = 'Maki is temporarily unavailable because its sign-in service is not configured.';
+      $('#googleSignInButton').disabled = true;
+      $('#magicLinkForm button').disabled = true;
+    }
     if (!user) {
       stopWorkspaceSubscription();
       stopWorkspaceSubscription = () => {};
@@ -2494,7 +2499,7 @@ initAuth({
       tasks = [];
       projects = [];
       savedFilters = [];
-      $('#googleSignInButton').textContent = 'Continue with Google';
+      $('#googleSignInButton').textContent = configured ? 'Continue with Google' : 'Sign-in unavailable';
       $('.auth-divider').hidden = false;
       $('#magicLinkForm').hidden = false;
       return;
