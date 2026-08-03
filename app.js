@@ -10,33 +10,14 @@ if (import.meta.env.PROD) {
 }
 import { renderDitherAvatar } from './dither-avatar.js';
 
-const initialTasks = [
-  { id: 1, title: 'Homepage visual QA', project: 'Studio relaunch', date: 'today', time: '9:00', duration: '45m', status: 'progress', priority: 'high', color: 'coral', notes: 'Review spacing and mobile states' },
-  { id: 2, title: 'Homepage critique', project: 'Studio relaunch', date: 'today', time: '10:30', duration: '45m', status: 'progress', priority: 'high', color: 'coral', meeting: true },
-  { id: 3, title: 'Write launch email draft', project: 'Studio relaunch', date: 'today', time: '12:00', duration: '60m', status: 'todo', priority: 'medium', color: 'coral' },
-  { id: 4, title: 'Book dentist appointment', project: 'Personal', date: 'today', time: '2:00', duration: '15m', status: 'todo', priority: 'low', color: 'blue' },
-  { id: 5, title: 'Finalize type scale', project: 'Studio relaunch', date: 'tomorrow', time: '9:30', duration: '45m', status: 'todo', priority: 'medium', color: 'coral' },
-  { id: 6, title: 'Order entryway bench', project: 'Home', date: 'tomorrow', time: '4:00', duration: '20m', status: 'todo', priority: 'low', color: 'sage' },
-  { id: 7, title: 'Prepare client handoff', project: 'Studio relaunch', date: 'friday', time: '11:00', duration: '90m', status: 'todo', priority: 'high', color: 'coral' },
-  { id: 8, title: 'Weekly review', project: 'Personal', date: 'friday', time: '3:30', duration: '30m', status: 'todo', priority: 'medium', color: 'blue' },
-  { id: 9, title: 'Mobile navigation prototype', project: 'Studio relaunch', date: 'someday', time: '', duration: '60m', status: 'progress', priority: 'medium', color: 'coral' },
-  { id: 10, title: 'Archive old project files', project: 'Studio relaunch', date: 'someday', time: '', duration: '30m', status: 'done', priority: 'low', color: 'coral' },
-  { id: 11, title: 'Fix loose kitchen handle', project: 'Home', date: 'someday', time: '', duration: '15m', status: 'done', priority: 'low', color: 'sage' },
-  { id: 12, title: 'Plan winter weekend', project: 'Personal', date: 'someday', time: '', duration: '30m', status: 'todo', priority: 'low', color: 'blue' }
-];
-
-let tasks = JSON.parse(localStorage.getItem('maki-tasks') || 'null') || initialTasks;
+let tasks = [];
 let trashedTasks = (JSON.parse(localStorage.getItem('maki-trash') || 'null') || []).filter(item => Date.now() - new Date(item.deletedAt).getTime() < 7 * 86400000);
-let projects = [
-  { id: 'local-0', name: 'Studio relaunch', color: 'coral' },
-  { id: 'local-1', name: 'Home', color: 'sage' },
-  { id: 'local-2', name: 'Personal', color: 'blue' }
-];
+let projects = [];
 let savedFilters = [];
 let persistenceMode = 'local';
 let hydratedUserId = null;
 let stopWorkspaceSubscription = () => {};
-let activeProject = 'Studio relaunch';
+let activeProject = 'Inbox';
 let projectViewScope = null;
 let currentFilter = 'all';
 let activeFilters = { query: '', project: 'all', priority: 'all', status: 'all', due: 'all' };
@@ -144,7 +125,7 @@ const clockMinutes = value => {
   return (Number.isFinite(hours) ? hours : 23) * 60 + (Number.isFinite(minutes) ? minutes : 59);
 };
 
-const colorForProject = project => ({ 'Studio relaunch': 'coral', Home: 'sage', Personal: 'blue' }[project] || 'blue');
+const colorForProject = project => projects.find(item => item.name === project)?.color || 'blue';
 const readableDate = date => ({ overdue: 'Overdue', today: 'Today', tomorrow: 'Tomorrow', friday: 'Friday', upcoming: 'Upcoming', someday: 'No date' }[date] || date);
 
 function showToast(message) {
@@ -360,9 +341,54 @@ function renderProfileAvatar(user, fullName) {
 
 function updateCounts() {
   const open = tasks.filter(task => task.status !== 'done');
+  const todayTasks = tasks.filter(task => task.date === 'today');
+  const completedToday = todayTasks.filter(task => task.status === 'done').length;
+  const progress = todayTasks.length ? Math.round((completedToday / todayTasks.length) * 100) : 0;
   $('#allCount').textContent = open.length;
   $('#todayCount').textContent = open.filter(task => task.date === 'today').length;
   $('#agendaCount').textContent = `${open.filter(task => task.date === 'today').length} tasks`;
+  $('#dayProgressRing').style.setProperty('--progress', progress);
+  $('#dayProgressValue').innerHTML = `${completedToday}<small>/ ${todayTasks.length}</small>`;
+  $('#dayProgressSummary').textContent = completedToday ? `${completedToday} task${completedToday === 1 ? '' : 's'} done` : 'No tasks completed';
+  $('#dayProgressMessage').textContent = todayTasks.length ? (completedToday === todayTasks.length ? 'Today is complete' : `${todayTasks.length - completedToday} remaining`) : 'Your day is clear';
+}
+
+function renderNextUp() {
+  const now = new Date();
+  const today = localDateKey(now);
+  const scheduledTasks = tasks
+    .filter(task => task.status !== 'done' && task.scheduledAt && localDateKey(new Date(task.scheduledAt)) === today)
+    .map(task => ({ type: 'task', startsAt: new Date(task.scheduledAt), title: task.title, source: task.project || 'Inbox', color: task.color }));
+  const scheduledEvents = calendarEvents
+    .filter(event => !event.all_day && event.starts_at && localDateKey(new Date(event.starts_at)) === today)
+    .map(event => ({ type: 'event', startsAt: new Date(event.starts_at), title: event.title, source: 'Calendar', color: 'blue' }));
+  const next = [...scheduledTasks, ...scheduledEvents].filter(item => item.startsAt > now).sort((a, b) => a.startsAt - b.startsAt)[0];
+  if (!next) {
+    $('#nextUpCard').innerHTML = '<div class="section-heading compact"><h2>Next up</h2></div><div class="next-up-empty"><strong>Your schedule is clear.</strong><p>Add a time to a task or connect your calendar.</p></div>';
+    return;
+  }
+  const minutesAway = Math.max(1, Math.round((next.startsAt - now) / 60000));
+  const countdown = minutesAway < 60 ? `In ${minutesAway} min` : `In ${Math.floor(minutesAway / 60)}h${minutesAway % 60 ? ` ${minutesAway % 60}m` : ''}`;
+  const parts = next.startsAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).split(' ');
+  $('#nextUpCard').innerHTML = `<div class="section-heading compact"><h2>Next up</h2><span class="live-pill"><i></i> ${escapeHtml(countdown)}</span></div><div class="next-event"><div class="event-time"><strong>${escapeHtml(parts[0])}</strong><span>${escapeHtml(parts[1] || '')}</span></div><div class="event-details"><span class="event-tag ${escapeHtml(next.color)}-bg">${escapeHtml(next.source)}</span><h3>${escapeHtml(next.title)}</h3><p>${next.type === 'event' ? 'Calendar event' : 'Scheduled task'}</p></div></div>`;
+}
+
+function preferenceTimeLabel(value) {
+  const [hours = 0, minutes = 0] = String(value || '00:00').split(':').map(Number);
+  const date = new Date(2000, 0, 1, hours, minutes);
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function renderDailyRhythm() {
+  $('#dailyRhythmCard').innerHTML = `<div class="section-heading compact"><h2>Daily rhythm</h2></div>
+    <div class="rhythm-row"><span class="rhythm-icon">☀</span><div><strong>Daily planning</strong><small>${escapeHtml(preferenceTimeLabel(settingsPreferences.planningTime))}</small></div><button class="habit-check" data-ritual="planning" aria-label="Open daily planning">→</button></div>
+    <div class="rhythm-row"><span class="rhythm-icon">◒</span><div><strong>Daily shutdown</strong><small>${escapeHtml(preferenceTimeLabel(settingsPreferences.shutdownTime))}</small></div><button class="habit-check" data-ritual="shutdown" aria-label="Open daily shutdown">→</button></div>`;
+}
+
+function renderWorkspaceInsight() {
+  const completed = tasks.filter(task => task.status === 'done');
+  const completedMinutes = completed.reduce((total, task) => total + (Number(task.plannedMinutes) || Number.parseInt(task.duration, 10) || 0), 0);
+  $('#workspaceInsight').innerHTML = `<span class="sparkle">✦</span><div><strong>${completed.length ? `${completed.length} task${completed.length === 1 ? '' : 's'} completed` : 'No completed work yet'}</strong><p>${completed.length ? `${escapeHtml(minutesLabel(completedMinutes))} of planned work finished.` : 'Completed tasks will build your progress summary.'}</p></div>`;
 }
 
 function taskCheck(task) {
@@ -471,6 +497,8 @@ function renderBoard() {
     { id: 'done', label: 'Done', dot: 'done' }
   ];
   const projectTasks = tasks.filter(task => task.project === activeProject);
+  $('#boardTitle').textContent = activeProject || 'Inbox';
+  $('#boardSubtitle').textContent = `${projectTasks.length} task${projectTasks.length === 1 ? '' : 's'} in this project.`;
   $('#kanbanBoard').innerHTML = columns.map(column => {
     const items = projectTasks.filter(task => task.status === column.id);
     return `<section class="kanban-column">
@@ -511,7 +539,7 @@ function renderTasks() {
     </div>`).join('')}</div>`;
   }).join('') || '<div class="empty-task-state"><span>⌕</span><strong>No matching tasks</strong><p>Try clearing a filter or searching for something else.</p><button class="secondary-button" data-clear-filters>Clear filters</button></div>';
   const availableTasks = projectViewScope ? tasks.filter(task => task.project === projectViewScope).length : tasks.length;
-  $('#resultsSummary').textContent = `${filtered.length} of ${availableTasks} tasks${persistenceMode === 'remote' ? ' · Synced' : ' · Local preview'}`;
+  $('#resultsSummary').textContent = `${filtered.length} of ${availableTasks} tasks`;
   renderActiveFilterChips();
 }
 
@@ -543,15 +571,15 @@ function renderCalendar() {
   html += days.map(day => `<div class="cal-day-head ${day.toDateString() === now.toDateString() ? 'today' : ''}"><span>${day.toLocaleDateString('en', { weekday: 'short' })}</span><strong>${day.getDate()}</strong></div>`).join('');
   hours.forEach((hour, row) => {
     html += `<div class="cal-time">${hour}</div>`;
-    days.forEach((day, col) => {
-      const events = getCalendarEvent(row, day, col);
+    days.forEach(day => {
+      const events = getCalendarEvent(row, day);
       html += `<div class="cal-cell">${events}</div>`;
     });
   });
   $('#weekCalendar').innerHTML = html;
 }
 
-function getCalendarEvent(row, day, col) {
+function getCalendarEvent(row, day) {
   const plannedTask = tasks.find(task => {
     if (!task.scheduledAt || ['done', 'archived'].includes(task.status)) return false;
     if (projectViewScope && task.project !== projectViewScope) return false;
@@ -573,19 +601,7 @@ function getCalendarEvent(row, day, col) {
     const minutes = endsAt ? Math.max(1, Math.round((endsAt - startsAt) / 60000)) : 30;
     return `<div class="cal-event blue-event"><strong>${escapeHtml(remote.title)}</strong>${timeLabel(startsAt)} · ${minutes}m</div>`;
   }
-  const events = {
-    '1-3': ['Homepage visual QA', '9:00 · 45m', 'coral-event', 'Studio relaunch'],
-    '2-3': ['Homepage critique', '10:30 · 45m', 'coral-event', 'Studio relaunch'],
-    '1-4': ['Finalize type scale', '9:30 · 45m', 'coral-event', 'Studio relaunch'],
-    '3-0': ['Team standup', '11:00 · 30m', 'sage-event', null],
-    '4-3': ['Write launch email', '12:00 · 60m', '', 'Studio relaunch'],
-    '6-3': ['Dentist call', '2:00 · 15m', 'sage-event', 'Personal'],
-    '7-4': ['Order entryway bench', '3:00 · 20m', 'sage-event', 'Home'],
-    '2-1': ['Research session', '10:00 · 60m', '']
-  };
-  const event = events[`${row}-${col}`];
-  if (projectViewScope && event?.[3] !== projectViewScope) return '';
-  return event ? `<div class="cal-event ${event[2]}"><strong>${event[0]}</strong>${event[1]}</div>` : '';
+  return '';
 }
 
 async function refreshCalendarEvents() {
@@ -598,6 +614,7 @@ async function refreshCalendarEvents() {
   try {
     calendarEvents = await loadCalendarEvents(rangeStart, rangeEnd);
     renderCalendar();
+    renderNextUp();
   } catch (error) {
     if (!String(error.message).includes('calendar_events')) showToast(`Calendar unavailable: ${error.message}`);
   }
@@ -904,9 +921,14 @@ async function openPlanner(dateKey = localDateKey(new Date()), { guided = false 
 }
 
 function renderProjectControls() {
-  const options = projects.map(project => `<option value="${project.id}">${project.name}</option>`).join('');
+  const options = projects.map(project => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join('');
   $('#projectFilter').innerHTML = `<option value="all">All projects</option>${options}`;
-  $('#taskProjectInput').innerHTML = projects.map(project => `<option value="${project.name}">${project.name}</option>`).join('');
+  $('#taskProjectInput').innerHTML = '<option value="">Inbox</option>' + projects.map(project => `<option value="${escapeHtml(project.name)}">${escapeHtml(project.name)}</option>`).join('');
+  $('#projectNavItems').innerHTML = projects.length ? projects.map(project => {
+    const count = tasks.filter(task => task.projectId === project.id || task.project === project.name).length;
+    const isActive = $('.view.active')?.dataset.view === 'board' && project.name === activeProject;
+    return `<button class="nav-item ${isActive ? 'active' : ''}" data-project="${escapeHtml(project.name)}" data-view-target="board"><span class="project-dot ${escapeHtml(project.color)}"></span><span>${escapeHtml(project.name)}</span><span class="nav-count">${count}</span></button>`;
+  }).join('') : '<p class="project-nav-empty">No projects yet</p>';
   $('#projectFilter').value = activeFilters.project;
   syncTaskDropdowns();
 }
@@ -1082,7 +1104,7 @@ function resetFilters() {
 
 function renderAll() {
   saveTrash();
-  updateCounts(); renderProjectControls(); renderSavedFilters(); renderTimeline(); renderStickyDayTimeline(); renderBoard(); renderTasks(); renderUpcoming(); renderCalendar(); renderFocusWorkspace(); bindDynamicControls();
+  updateCounts(); renderProjectControls(); renderSavedFilters(); renderTimeline(); renderStickyDayTimeline(); renderNextUp(); renderDailyRhythm(); renderWorkspaceInsight(); renderBoard(); renderTasks(); renderUpcoming(); renderCalendar(); renderFocusWorkspace(); bindDynamicControls();
 }
 
 function bindDynamicControls() {
@@ -1640,12 +1662,12 @@ function initTheme() {
   updateThemeButton(stored);
 }
 
-function initDateAndGreeting() {
+function initDateAndGreeting(firstName = '') {
   const now = new Date();
   $('#topbarDay').textContent = now.toLocaleDateString('en-AU', { weekday: 'long' });
   $('#topbarDate').textContent = now.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 18 ? 'Good afternoon' : 'Good evening';
-  $('.today-heading h1').textContent = `${greeting}, Alex.`;
+  $('.today-heading h1').textContent = `${greeting}${firstName ? `, ${firstName}` : ''}.`;
 }
 function updateThemeButton(theme) {
   $('#themeButton').setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`);
@@ -2205,10 +2227,10 @@ $('#taskForm').addEventListener('submit', async event => {
   event.preventDefault();
   const title = $('#taskTitleInput').value.trim();
   if (!title) return;
-  const project = $('#taskProjectInput').value;
+  const project = $('#taskProjectInput').value || 'Inbox';
   const task = {
     id: crypto.randomUUID(), title, project, notes: $('#taskNotesInput').value.trim(), date: $('#taskDateInput').value,
-    time: $('#scheduleSwitch').classList.contains('on') ? '3:30' : '', duration: `${$('#taskDurationInput').value}m`, plannedMinutes: Number($('#taskDurationInput').value), status: 'todo',
+    time: '', duration: `${$('#taskDurationInput').value}m`, plannedMinutes: Number($('#taskDurationInput').value), status: 'todo',
     priority: $('#taskPriorityInput').value, color: colorForProject(project)
   };
   tasks.unshift(task); save(); renderAll(); closeTaskModal(); event.target.reset(); syncTaskDropdowns(); $('#scheduleSwitch').classList.remove('on'); showToast('Task added');
@@ -2268,7 +2290,6 @@ document.addEventListener('keydown', async event => {
 });
 
 $('.notification-button').onclick = () => showToast('You’re all caught up');
-$('.insight-card button').onclick = event => event.currentTarget.closest('.insight-card').remove();
 $$('.habit-check').forEach(button => button.onclick = () => { button.classList.toggle('done'); button.textContent = button.classList.contains('done') ? '✓' : ''; });
 
 $('#continueOnboardingButton').onclick = async () => {
@@ -2368,7 +2389,10 @@ $('#continueFirstGoalButton').onclick = async () => {
 };
 $('#backToFirstGoalButton').onclick = () => setOnboardingStep('first-goal');
 $('#skipOnboardingButton').onclick = async () => {
-  try { await saveOnboardingPreferences([...onboardingSelection], onboardingSaveOptions(true)); closeOnboarding(); }
+  try {
+    await saveOnboardingPreferences([...onboardingSelection], onboardingSaveOptions());
+    setOnboardingStep('calendar');
+  }
   catch (error) { showToast(`Couldn’t save setup: ${error.message}`); }
 };
 $('#finishOnboardingButton').onclick = async () => {
@@ -2395,9 +2419,63 @@ initTheme();
 initDateAndGreeting();
 renderAll();
 
+let landingMotionReady = false;
+function initLandingMotion() {
+  if (landingMotionReady) return;
+  landingMotionReady = true;
+  const landing = $('#authGate');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  landing.classList.add('motion-ready');
+
+  const revealTargets = [
+    $('.landing-proof'),
+    $('.story-heading'),
+    ...$$('.story-steps article'),
+    ...$$('.feature-card'),
+    $('.signup-copy'),
+    $('.landing .auth-card'),
+    $('.landing-footer')
+  ].filter(Boolean);
+  revealTargets.forEach(target => target.classList.add('landing-reveal'));
+
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    revealTargets.forEach(target => target.classList.add('is-visible'));
+    landing.classList.add('landing-mounted');
+    return;
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-visible');
+      observer.unobserve(entry.target);
+    });
+  }, { root: landing, threshold: .14, rootMargin: '0px 0px -7% 0px' });
+  revealTargets.forEach(target => observer.observe(target));
+
+  const scene = $('.product-scene');
+  if (scene && window.matchMedia('(pointer:fine)').matches) {
+    scene.addEventListener('pointermove', event => {
+      const bounds = scene.getBoundingClientRect();
+      const x = (event.clientX - bounds.left) / bounds.width - .5;
+      const y = (event.clientY - bounds.top) / bounds.height - .5;
+      scene.style.setProperty('--scene-x', `${x * 2.4}deg`);
+      scene.style.setProperty('--scene-y', `${y * -2}deg`);
+      scene.style.setProperty('--scene-lift', '-3px');
+    });
+    scene.addEventListener('pointerleave', () => {
+      scene.style.removeProperty('--scene-x');
+      scene.style.removeProperty('--scene-y');
+      scene.style.removeProperty('--scene-lift');
+    });
+  }
+
+  requestAnimationFrame(() => requestAnimationFrame(() => landing.classList.add('landing-mounted')));
+}
+
 async function hydratePersistence(user) {
   const key = user?.id || 'local';
-  if (hydratedUserId === key) return true;
+  if (hydratedUserId === key) return { ready: true, isEmpty: tasks.length === 0 && projects.length === 0 };
   hydratedUserId = null;
   stopWorkspaceSubscription();
   stopWorkspaceSubscription = () => {};
@@ -2406,7 +2484,7 @@ async function hydratePersistence(user) {
   savedFilters = [];
   persistenceMode = 'loading';
   try {
-    const workspace = await loadWorkspace(initialTasks);
+    const workspace = await loadWorkspace();
     if (user && workspace.mode !== 'remote') throw new Error('Authenticated workspace unavailable');
     tasks = separateArchivedTasks(workspace.tasks);
     projects = workspace.projects;
@@ -2418,7 +2496,7 @@ async function hydratePersistence(user) {
     if (user && workspace.mode === 'remote') {
       stopWorkspaceSubscription = subscribeToWorkspace(user.id, async () => {
         try {
-          const refreshed = await loadWorkspace([]);
+          const refreshed = await loadWorkspace();
           tasks = separateArchivedTasks(refreshed.tasks); projects = refreshed.projects; savedFilters = refreshed.savedFilters;
           renderAll();
         } catch (error) {
@@ -2426,7 +2504,7 @@ async function hydratePersistence(user) {
         }
       });
     }
-    return true;
+    return { ready: true, isEmpty: workspace.isEmpty };
   } catch (error) {
     tasks = [];
     projects = [];
@@ -2435,7 +2513,7 @@ async function hydratePersistence(user) {
     hydratedUserId = null;
     renderAll();
     showToast(`Database unavailable: ${error.message}`);
-    return false;
+    return { ready: false, isEmpty: false };
   }
 }
 
@@ -2483,6 +2561,7 @@ initAuth({
     }
     $('#authGate').hidden = false;
     $('.app-shell').hidden = true;
+    if (!workspaceRoute) initLandingMotion();
     if (error) $('#authStatus').textContent = error.message;
     if (!configured) {
       $('#authStatus').textContent = 'Maki is temporarily unavailable because its sign-in service is not configured.';
@@ -2517,26 +2596,33 @@ initAuth({
     $('.profile-menu-details strong').textContent = fullName;
     $('.profile-menu-details small').textContent = user.email || '';
     $('#workspaceMenuEmail').textContent = user.email || fullName;
+    initDateAndGreeting(fullName.split(' ')[0]);
     renderProfileAvatar(user, fullName);
-    const workspaceReady = await hydratePersistence(user);
-    if (!workspaceReady) {
+    const workspaceState = await hydratePersistence(user);
+    if (!workspaceState.ready) {
       $('#authTitle').textContent = 'We couldn’t open your workspace.';
       $('#authStatus').textContent = 'Your data stayed private. Refresh to try again.';
       return;
     }
-    $('#authGate').hidden = true;
-    $('.app-shell').hidden = false;
     try {
       const onboarding = await loadOnboardingPreferences();
       onboardingSelection = new Set(onboarding?.selected_providers || []);
       if (onboarding?.workday_start) $('#workdayStartInput').value = String(onboarding.workday_start).slice(0, 5);
       if (onboarding?.workday_end) $('#workdayEndInput').value = String(onboarding.workday_end).slice(0, 5);
-      if (!onboarding?.completed_at) {
+      if (workspaceState.isEmpty || !onboarding?.completed_at) {
+        $('#authGate').hidden = true;
         $('.app-shell').hidden = true;
         showOnboarding(onboarding);
+      } else {
+        $('#authGate').hidden = true;
+        $('.app-shell').hidden = false;
       }
     } catch (onboardingError) {
-      showToast(`Onboarding unavailable: ${onboardingError.message}`);
+      $('#authGate').hidden = false;
+      $('.app-shell').hidden = true;
+      $('#authTitle').textContent = 'We couldn’t finish loading your setup.';
+      $('#authStatus').textContent = 'Your data stayed private. Refresh to try again.';
+      console.error('Onboarding load failed', onboardingError);
     }
     if (providerToken) {
       try {

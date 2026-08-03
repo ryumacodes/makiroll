@@ -5,12 +5,21 @@ const LOCAL_FILTERS_KEY = 'maki-saved-filters';
 const LOCAL_PLANS_KEY = 'maki-daily-plans';
 const LOCAL_ONBOARDING_KEY = 'maki-onboarding';
 const LOCAL_TASK_EXTRAS_KEY = 'maki-task-extras';
-const STARTER_PROJECTS = [
-  { name: 'Studio relaunch', color: 'coral', position: 0 },
-  { name: 'Home', color: 'sage', position: 1 },
-  { name: 'Personal', color: 'blue', position: 2 }
-];
-
+const LEGACY_DEMO_TASK_TITLES = new Set([
+  'Homepage visual QA',
+  'Homepage critique',
+  'Write launch email draft',
+  'Book dentist appointment',
+  'Finalize type scale',
+  'Order entryway bench',
+  'Prepare client handoff',
+  'Weekly review',
+  'Mobile navigation prototype',
+  'Archive old project files',
+  'Fix loose kitchen handle',
+  'Plan winter weekend'
+]);
+const LEGACY_DEMO_PROJECT_NAMES = new Set(['Studio relaunch', 'Home', 'Personal']);
 let projects = [];
 let savedFilters = [];
 let realtimeChannel = null;
@@ -119,61 +128,69 @@ const taskToRow = (task, projectId) => {
   };
 };
 
-function localWorkspace(fallbackTasks) {
-  const localTasks = JSON.parse(localStorage.getItem(LOCAL_TASKS_KEY) || 'null') || fallbackTasks;
-  projects = STARTER_PROJECTS.map((project, index) => ({ ...project, id: `local-${index}` }));
+function localWorkspace() {
+  const localTasks = JSON.parse(localStorage.getItem(LOCAL_TASKS_KEY) || '[]');
+  projects = [];
   savedFilters = JSON.parse(localStorage.getItem(LOCAL_FILTERS_KEY) || '[]');
-  return { mode: 'local', tasks: localTasks, projects, savedFilters };
+  return { mode: 'local', tasks: localTasks, projects, savedFilters, isEmpty: localTasks.length === 0 };
 }
 
-async function ensureProjects(client, userId) {
-  let { data, error } = await client.from('projects').select('id,name,color,position').eq('user_id', userId).is('archived_at', null).order('position');
-  if (error) throw error;
-  if (data.length) return data;
+function withoutLegacyDemoData(taskRows, projectRows) {
+  const demoTasks = taskRows.filter(task => LEGACY_DEMO_TASK_TITLES.has(task.title));
+  const demoProjects = projectRows.filter(project => LEGACY_DEMO_PROJECT_NAMES.has(project.name));
+  const hasCompleteDemoSignature = demoTasks.length === LEGACY_DEMO_TASK_TITLES.size
+    && new Set(demoTasks.map(task => task.title)).size === LEGACY_DEMO_TASK_TITLES.size
+    && demoProjects.length === LEGACY_DEMO_PROJECT_NAMES.size
+    && new Set(demoProjects.map(project => project.name)).size === LEGACY_DEMO_PROJECT_NAMES.size;
 
-  ({ data, error } = await client.from('projects').insert(STARTER_PROJECTS.map(project => ({ ...project, user_id: userId }))).select('id,name,color,position'));
-  if (error) throw error;
-  return data;
+  if (!hasCompleteDemoSignature) return { taskRows, projectRows };
+  return {
+    taskRows: taskRows.filter(task => !LEGACY_DEMO_TASK_TITLES.has(task.title)),
+    projectRows: projectRows.filter(project => !LEGACY_DEMO_PROJECT_NAMES.has(project.name))
+  };
 }
 
-async function seedTasks(client, fallbackTasks, projectRows, userId) {
-  if (!fallbackTasks.length) return [];
-  const projectIds = new Map(projectRows.map(project => [project.name, project.id]));
-  const rows = fallbackTasks.map((task, index) => ({
-    ...taskToRow({ ...task, position: index }, projectIds.get(task.project)),
-    user_id: userId,
-    position: index
-  }));
-  const { data, error } = await client.from('tasks').insert(rows).select('*,project:projects(id,name,color)');
-  if (error) throw error;
-  return data;
-}
-
-export async function loadWorkspace(fallbackTasks = []) {
+export async function loadWorkspace() {
   const client = getSupabaseClient();
   const { configured, user } = getAuthState();
-  if (!configured || !client || !user) return localWorkspace(fallbackTasks);
+  if (!configured || !client || !user) return localWorkspace();
 
   // Synced workspaces never share task caches through browser localStorage.
   localStorage.removeItem(LOCAL_TASKS_KEY);
   localStorage.removeItem(LOCAL_FILTERS_KEY);
   localStorage.removeItem(LOCAL_PLANS_KEY);
 
-  projects = await ensureProjects(client, user.id);
-  let { data: taskRows, error: taskError } = await client
+  const { data: projectRows, error: projectError } = await client
+    .from('projects')
+    .select('id,name,color,position')
+    .eq('user_id', user.id)
+    .is('archived_at', null)
+    .order('position');
+  if (projectError) throw projectError;
+  const remoteProjects = projectRows || [];
+
+  const { data: taskRows, error: taskError } = await client
     .from('tasks')
     .select('*,project:projects(id,name,color)')
     .eq('user_id', user.id)
     .neq('status', 'archived')
     .order('position');
   if (taskError) throw taskError;
-  if (!taskRows.length) taskRows = await seedTasks(client, fallbackTasks, projects, user.id);
+
+  const realWorkspace = withoutLegacyDemoData(taskRows || [], remoteProjects);
+  projects = realWorkspace.projectRows;
 
   const { data: filterRows, error: filterError } = await client.from('saved_filters').select('*').eq('user_id', user.id).order('position');
   if (filterError) throw filterError;
-  savedFilters = filterRows;
+  savedFilters = filterRows || [];
 
-  return { mode: 'remote', tasks: taskRows.map(normaliseTask), projects, savedFilters };
+  return {
+    mode: 'remote',
+    tasks: realWorkspace.taskRows.map(normaliseTask),
+    projects,
+    savedFilters,
+    isEmpty: realWorkspace.taskRows.length === 0 && projects.length === 0
+  };
 }
 
 export async function loadOnboardingPreferences() {
