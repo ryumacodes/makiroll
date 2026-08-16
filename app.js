@@ -1,5 +1,5 @@
 import { completeGoogleCalendarConsent, connectGoogleCalendar, initAuth, signInWithGoogle, signInWithMagicLink, signOut, getAuthState } from './supabase.js';
-import { commitDayPlan, createSavedFilter, createTask, deleteSavedFilter, deleteTask, loadDailyPlan, loadOnboardingPreferences, loadWorkspace, persistLocalTasks, saveOnboardingPreferences, searchWorkspaceTasks, subscribeToWorkspace, updateTask } from './data.js';
+import { commitDayPlan, createProject, createSavedFilter, createTask, deleteSavedFilter, deleteTask, loadDailyPlan, loadOnboardingPreferences, loadWorkspace, persistLocalTasks, saveOnboardingPreferences, searchWorkspaceTasks, subscribeToWorkspace, updateTask } from './data.js';
 import { loadCalendarEvents, saveGoogleGrant, startCalendarSync, stopCalendarSync, syncGoogleCalendar } from './calendar.js';
 
 // Keep analytics off the critical path and avoid recording OAuth callback URLs.
@@ -23,6 +23,8 @@ let currentFilter = 'all';
 let activeFilters = { query: '', project: 'all', priority: 'all', status: 'all', due: 'all' };
 let remoteSearchResults = null;
 let weekOffset = 0;
+let monthOffset = 0;
+let calendarMode = 'week';
 let calendarEvents = [];
 let calendarSyncUserId = null;
 let planningDate = null;
@@ -37,7 +39,6 @@ let guidedPlanning = false;
 let guidedPlanningStage = 5;
 let guidedPlanningMaxStage = 5;
 let focusSeconds = 25 * 60;
-let focusRunning = true;
 let focusMode = 'focus';
 let currentFocusTaskId = null;
 let workspaceFocusInterval = null;
@@ -90,25 +91,20 @@ const CONNECTORS = [
 ];
 
 const SHORTCUT_GROUPS = [
-  ['General', [['Open command menu', ['⌘', 'K']], ['Show keyboard shortcuts', ['?']], ['Toggle AI voice assistant', ['Y'], true]]],
-  ['Global', [['Add task', ['⌘', '⇧', 'A']], ['Play/pause timer', ['⌘', '⇧', 'Space']], ['Toggle AI voice assistant', ['⌘', '⇧', 'Y'], true]]],
-  ['Task creation', [['Add task', ['A']], ['Add task as subtask', ['A', 'then', '>']]]],
-  ['Task actions', [['Assign project', ['Q', 'or', '#']], ['Set planned time', ['W', 'or', '~']], ['Set priority', ['!']], ['Set start date', ['@']], ['Start or stop timer', ['Space']], ['Add subtask', ['V']], ['Complete task', ['C']], ['Delete task', ['⌘', 'Delete']], ['Open task', ['⌘', 'Enter']], ['Duplicate task', ['⌘', 'D']], ['Undo command', ['⌘', 'Z'], true]]],
-  ['Task scheduling', [['Auto-schedule task', ['X']], ['Remove task from calendar', ['⌘', 'X']], ['Schedule to today', ['S']], ['Snooze one day', ['D']], ['Move to backlog', ['Z']]]],
-  ['Task ordering', [['Move task down', ['⌘', '↓'], true], ['Move task up', ['⌘', '↑'], true], ['Move task to bottom', ['⌘', '⇧', '↓'], true], ['Move task to top', ['⌘', '⇧', '↑'], true]]],
-  ['Task navigation', [['Select next task', ['↓'], true], ['Select previous task', ['↑'], true], ['Select first task next day', ['→'], true], ['Select first task previous day', ['←'], true]]],
+  ['General', [['Open command menu', ['⌘', 'K']], ['Show keyboard shortcuts', ['?']]]],
+  ['Global', [['Add task', ['⌘', '⇧', 'A']], ['Play/pause timer', ['⌘', '⇧', 'Space']]]],
+  ['Task creation', [['Add task', ['A']]]],
+  ['Task actions', [['Set planned time', ['W', 'or', '~']], ['Set priority', ['!']], ['Set start date', ['@']], ['Add subtask', ['V']], ['Complete task', ['C']], ['Delete task', ['⌘', 'Delete']], ['Duplicate task', ['⌘', 'D']]]],
+  ['Task scheduling', [['Schedule to today', ['S']], ['Snooze one day', ['D']], ['Move to backlog', ['Z']]]],
   ['Focus', [['Enter focus mode', ['F']], ['Take a break', ['K']]]],
-  ['Date navigation', [['Jump to today', ['⇧', 'Space']], ['Jump forward a day', ['⇧', '→'], true], ['Jump backward a day', ['⇧', '←'], true]]],
-  ['Page navigation', [['Filter tasks', ['⇧', 'F']], ['Swap task/calendar view', ['Tab']], ['Go to home', ['H']], ['Go to daily planning', ['P']], ['Go to daily task list', ['T']], ['Go to backlog', ['B']], ['Go to daily shutdown', ['O']], ['Show calendar in right panel', ['⇧', 'C']], ['Toggle dark mode', ['⇧', 'L']]]],
-  ['Integrations', [['Show Gmail', ['⇧', 'G'], true], ['Show Outlook', ['⇧', 'O'], true], ['Show Asana', ['⇧', 'S'], true], ['Show Trello', ['⇧', 'E'], true], ['Show Todoist', ['⇧', 'D'], true], ['Show Jira', ['⇧', 'J'], true], ['Show Linear', ['⇧', 'V'], true], ['Show GitHub', ['⇧', 'I'], true], ['Show ClickUp', ['⇧', 'U'], true], ['Show Monday.com', ['⇧', 'M'], true], ['Show Notion', ['⇧', 'N'], true]]],
-  ['Editor', [['Bold', ['⌘', 'B'], true], ['Italic', ['⌘', 'I'], true], ['Underline', ['⌘', 'U'], true], ['Strikethrough', ['⌘', 'D'], true], ['Turn text into link', ['⌘', 'K'], true], ['Undo', ['⌘', 'Z'], true], ['Redo', ['⌘', '⇧', 'Z'], true]]],
-  ['Markdown formatting', [['Large header', ['#', 'Space'], true], ['Medium header', ['##', 'Space'], true], ['Bulleted list', ['-', 'Space'], true], ['Numbered list', ['1.', 'Space'], true], ['Check list', ['[ ]', 'Space'], true], ['Blockquote', ['>', 'Space'], true], ['Code block', ['```'], true], ['Inline code', ['`Code`'], true]]],
+  ['Date navigation', [['Jump to today', ['⇧', 'Space']]]],
+  ['Page navigation', [['Filter tasks', ['⇧', 'F']], ['Go to home', ['H']], ['Go to daily planning', ['P']], ['Go to daily task list', ['T']], ['Go to backlog', ['B']], ['Go to daily shutdown', ['O']], ['Show calendar', ['⇧', 'C']], ['Toggle dark mode', ['⇧', 'L']]]],
 ];
 
 const SETTINGS_NAV = [
-  ['Account', [['general', 'General'], ['display', 'Display'], ['rituals', 'Rituals'], ['timeboxing', 'Timeboxing'], ['schedule', 'Schedule'], ['shortcuts', 'Keyboard Shortcuts'], ['focus', 'Focus'], ['focusBar', 'Focus Bar'], ['menuBar', 'macOS Menu Bar'], ['sounds', 'Focus Sounds'], ['ai', 'AI'], ['beta', 'Beta'], ['notifications', 'Notifications'], ['profile', 'Profile'], ['account', 'Account Management']]],
-  ['Workspace', [['channels', 'Projects'], ['members', 'Members'], ['privacy', 'Privacy'], ['billing', 'Billing'], ['management', 'Workspace Management']]],
-  ['Integrations', [['calendar', 'Calendar'], ['email', 'Email'], ['asana', 'Asana'], ['clickup', 'ClickUp'], ['github', 'GitHub'], ['jira', 'Jira'], ['linear', 'Linear'], ['mcp', 'MCP'], ['monday', 'Monday.com'], ['notion', 'Notion'], ['todoist', 'Todoist'], ['trello', 'Trello'], ['slack', 'Slack'], ['zapier', 'Zapier'], ['toggl', 'Toggl'], ['google_tasks', 'Google Tasks']]],
+  ['Account', [['general', 'General'], ['display', 'Display'], ['rituals', 'Rituals'], ['timeboxing', 'Timeboxing'], ['schedule', 'Schedule'], ['shortcuts', 'Keyboard Shortcuts'], ['focus', 'Focus'], ['focusBar', 'Focus Bar'], ['beta', 'Beta'], ['notifications', 'Notifications'], ['profile', 'Profile'], ['account', 'Account Management']]],
+  ['Workspace', [['channels', 'Projects'], ['privacy', 'Privacy']]],
+  ['Integrations', [['calendar', 'Calendar']]],
 ];
 
 const $ = (selector, parent = document) => parent.querySelector(selector);
@@ -289,7 +285,7 @@ function setOnboardingStep(step) {
     updateFirstGoalState();
     setTimeout(() => $('#onboardingFirstGoal').focus(), 50);
   }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function showOnboarding(preferences = null) {
@@ -557,6 +553,10 @@ function renderUpcoming() {
 }
 
 function renderCalendar() {
+  if (calendarMode === 'month') {
+    renderMonthCalendar();
+    return;
+  }
   const now = new Date();
   const base = new Date(now);
   const mondayDelta = (now.getDay() + 6) % 7;
@@ -577,6 +577,37 @@ function renderCalendar() {
     });
   });
   $('#weekCalendar').innerHTML = html;
+  $('#weekCalendar').classList.remove('month-calendar');
+}
+
+function calendarItemsForDay(day) {
+  const key = localDateKey(day);
+  const local = tasks.filter(task => {
+    if (['done', 'archived'].includes(task.status) || (projectViewScope && task.project !== projectViewScope)) return false;
+    return task.dueDate === key || (task.scheduledAt && localDateKey(new Date(task.scheduledAt)) === key);
+  }).map(task => ({ title: task.title, color: task.color, taskId: task.id }));
+  const remote = projectViewScope ? [] : calendarEvents.filter(event => event.starts_at && localDateKey(new Date(event.starts_at)) === key)
+    .map(event => ({ title: event.title, color: 'blue' }));
+  return [...local, ...remote];
+}
+
+function renderMonthCalendar() {
+  const now = new Date();
+  const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const start = new Date(cursor);
+  start.setDate(1 - ((start.getDay() + 6) % 7));
+  const days = Array.from({ length: 42 }, (_, index) => datePlusDays(start, index));
+  $('#calendarMonth').textContent = cursor.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => `<div class="month-weekday">${day}</div>`).join('');
+  const cells = days.map(day => {
+    const items = calendarItemsForDay(day);
+    const outside = day.getMonth() !== cursor.getMonth();
+    const today = day.toDateString() === now.toDateString();
+    return `<div class="month-day${outside ? ' outside' : ''}${today ? ' today' : ''}"><strong>${day.getDate()}</strong><div>${items.slice(0, 3).map(item => `<button type="button" class="month-event ${escapeHtml(item.color)}-event"${item.taskId ? ` data-task-detail="${escapeHtml(item.taskId)}"` : ' disabled'}>${escapeHtml(item.title)}</button>`).join('')}${items.length > 3 ? `<small>+${items.length - 3} more</small>` : ''}</div></div>`;
+  }).join('');
+  $('#weekCalendar').classList.add('month-calendar');
+  $('#weekCalendar').innerHTML = weekdays + cells;
+  bindDynamicControls();
 }
 
 function getCalendarEvent(row, day) {
@@ -606,11 +637,17 @@ function getCalendarEvent(row, day) {
 
 async function refreshCalendarEvents() {
   const now = new Date();
-  const rangeStart = new Date(now);
-  rangeStart.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
+  const rangeStart = calendarMode === 'month'
+    ? new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+    : new Date(now);
+  if (calendarMode === 'week') rangeStart.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
   rangeStart.setHours(0, 0, 0, 0);
   const rangeEnd = new Date(rangeStart);
-  rangeEnd.setDate(rangeStart.getDate() + 7);
+  if (calendarMode === 'month') {
+    rangeStart.setDate(rangeStart.getDate() - 7);
+    rangeEnd.setMonth(rangeEnd.getMonth() + 1);
+    rangeEnd.setDate(rangeEnd.getDate() + 7);
+  } else rangeEnd.setDate(rangeStart.getDate() + 7);
   try {
     calendarEvents = await loadCalendarEvents(rangeStart, rangeEnd);
     renderCalendar();
@@ -904,8 +941,10 @@ async function openPlanner(dateKey = localDateKey(new Date()), { guided = false 
   $('#planningTitle').textContent = guided ? 'Plan your first day.' : 'Make today realistic.';
   $('#planningDateLabel').textContent = new Date(`${planningDate}T12:00:00`).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
   try {
-    await syncGoogleCalendar();
-    await refreshCalendarEvents();
+    if (getAuthState().user) {
+      await syncGoogleCalendar();
+      await refreshCalendarEvents();
+    }
     const savedPlan = await loadDailyPlan(planningDate);
     if (savedPlan) {
       $('#workdayStartInput').value = savedPlan.workday_start.slice(0, 5);
@@ -979,6 +1018,37 @@ function firstPlanTaskDate(dateKey) {
   if (dateKey === localDateKey(datePlusDays(now, 1))) return 'tomorrow';
   const target = new Date(`${dateKey}T12:00:00`);
   return target.getDay() === 5 ? 'friday' : 'someday';
+}
+
+function dueDateForTaskBucket(bucket) {
+  const today = new Date();
+  if (bucket === 'today') return localDateKey(today);
+  if (bucket === 'tomorrow') return localDateKey(datePlusDays(today, 1));
+  if (bucket === 'friday') {
+    const offset = (5 - today.getDay() + 7) % 7 || 7;
+    return localDateKey(datePlusDays(today, offset));
+  }
+  return null;
+}
+
+function availableTaskStart(dateKey, durationMinutes) {
+  if (!dateKey) return null;
+  const start = timeMinutes($('#workdayStartInput').value || '09:00');
+  const end = timeMinutes($('#workdayEndInput').value || '17:00');
+  const intervals = [
+    ...tasks.filter(task => task.scheduledAt && !['done', 'archived'].includes(task.status)).map(task => {
+      const taskStart = new Date(task.scheduledAt);
+      return { start: taskStart, end: new Date(taskStart.getTime() + (task.plannedMinutes || 30) * 60000) };
+    }),
+    ...calendarEvents.filter(event => event.starts_at && event.ends_at).map(event => ({ start: new Date(event.starts_at), end: new Date(event.ends_at) }))
+  ].filter(interval => localDateKey(interval.start) === dateKey);
+  for (let minute = start; minute + durationMinutes <= end; minute += 15) {
+    const candidate = new Date(`${dateKey}T00:00:00`);
+    candidate.setMinutes(minute);
+    const candidateEnd = new Date(candidate.getTime() + durationMinutes * 60000);
+    if (!intervals.some(interval => candidate < interval.end && candidateEnd > interval.start)) return candidate;
+  }
+  return null;
 }
 
 function taskMatchesPlanDate(task, dateKey) {
@@ -1210,7 +1280,7 @@ function switchView(view, trigger, keepProjectScope = false) {
     button.classList.toggle('active', isActiveView && isActiveProject);
   });
   $('.sidebar').classList.remove('open');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function openTaskModal() {
@@ -1451,7 +1521,7 @@ async function permanentlyDeleteTrashedTask(taskId) {
 function shortcutPanelHtml(query = '') {
   const term = query.trim().toLowerCase();
   const groups = SHORTCUT_GROUPS.map(([name, rows]) => [name, rows.filter(([label]) => !term || `${name} ${label}`.toLowerCase().includes(term))]).filter(([, rows]) => rows.length);
-  return `<div class="shortcut-search"><span>⌕</span><input id="shortcutSearch" type="search" placeholder="Search shortcuts…" value="${escapeHtml(query)}"></div><div class="shortcut-catalogue">${groups.map(([name, rows]) => `<section><h3>${name}</h3>${rows.map(([label, keys, planned]) => `<div class="shortcut-row"><span>${label}${planned ? '<small>Planned</small>' : ''}</span><span>${keys.map(key => key === 'then' || key === 'or' ? `<em>${key}</em>` : `<kbd>${escapeHtml(key)}</kbd>`).join('')}</span></div>`).join('')}</section>`).join('') || '<div class="ritual-empty">No shortcuts found.</div>'}</div>`;
+  return `<div class="shortcut-search"><span>⌕</span><input id="shortcutSearch" type="search" placeholder="Search shortcuts…" value="${escapeHtml(query)}"></div><div class="shortcut-catalogue">${groups.map(([name, rows]) => `<section><h3>${name}</h3>${rows.map(([label, keys]) => `<div class="shortcut-row"><span>${label}</span><span>${keys.map(key => key === 'or' ? `<em>${key}</em>` : `<kbd>${escapeHtml(key)}</kbd>`).join('')}</span></div>`).join('')}</section>`).join('') || '<div class="ritual-empty">No shortcuts found.</div>'}</div>`;
 }
 
 function trashPanelHtml() {
@@ -1470,15 +1540,10 @@ function settingInput(key, title, description, type = 'text', attributes = '') {
   return `<label class="settings-preference-row"><span><strong>${title}</strong><small>${description}</small></span><input type="${type}" data-setting="${key}" value="${escapeHtml(settingsPreferences[key] ?? '')}" ${attributes}></label>`;
 }
 
-function plannedSettingsCard(title, description) {
-  return `<div class="settings-planned"><span>Planned</span><strong>${title}</strong><p>${description}</p></div>`;
-}
-
 function settingsPageHtml(page) {
   const auth = getAuthState();
   const email = auth.user?.email || $('#workspaceMenuEmail').textContent || 'Local workspace';
   const fullName = $('.profile-row strong').textContent || 'Maki user';
-  const connector = CONNECTORS.find(([id]) => id === page);
   const pages = {
     general: `<div class="settings-preference-list">${settingSelect('timeZone', 'Time zone', "What's your time zone?", [[Intl.DateTimeFormat().resolvedOptions().timeZone, '(GMT +10:00) Australia/Melbourne']], true)}${settingToggle('timeZoneAlert', 'Time zone alert', 'Show an alert when your time zone has changed.')}${settingSelect('timeFormat', 'Time format', 'How should times be displayed in Maki?', [['device', 'Use device region'], ['12', '12-hour'], ['24', '24-hour']])}${settingSelect('weekStart', 'Start of week', 'What day does the week start?', [['monday', 'Monday'], ['sunday', 'Sunday'], ['saturday', 'Saturday']])}${settingToggle('countPlannedAsActual', 'Count planned time as actual time', 'When a completed task has no actual time, use its planned time instead.')}${settingToggle('autoSortTasks', 'Auto-sort tasks', 'Keep your daily task list in a sensible order as plans change.')}${settingSelect('newTaskPosition', 'New task position', 'Where should newly created tasks appear?', [['top', 'Top of list'], ['bottom', 'Bottom of list']])}${settingSelect('rolloverPosition', 'Task rollover position', 'Where should unfinished tasks appear on the next day?', [['top', 'Top of list'], ['bottom', 'Bottom of list']])}${settingSelect('priorityRollover', 'Priority rollover', 'Choose whether task priority carries into the next day.', [['none', 'Keep priority'], ['lower', 'Lower by one level'], ['clear', 'Clear priority']])}${settingInput('workloadHours', 'Workload threshold', 'Warn when planned work exceeds this many hours.', 'number', 'min="1" max="16" step="0.5"')}</div>`,
     display: `<p class="settings-lede">Control how much information appears and how completed work is treated.</p><div class="settings-preference-list">${settingSelect('theme', 'Dark mode', 'Choose the appearance used across Maki.', [['dark', 'Dark'], ['light', 'Light'], ['system', 'Use system setting']])}${settingSelect('density', 'Interface density', 'Control how much fits on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}${settingSelect('calendarEventColor', 'Calendar event color', 'Choose how imported events are coloured.', [['calendar', 'Use calendar colour'], ['project', 'Use project colour'], ['neutral', 'Neutral']])}${settingToggle('hideCompletedTasks', 'Hide completed tasks in task list', 'Remove completed tasks from the daily list.')}${settingToggle('hideCompletedCalendar', 'Hide completed tasks in calendar', 'Remove completed task blocks from the timeline.')}${settingToggle('supportBubble', 'Support chat bubble', 'Show the help and feedback control in the workspace.')}${settingToggle('celebrationAnimations', 'Celebration animations', 'Celebrate meaningful progress without interrupting your flow.')}${settingToggle('spellcheck', 'Spellcheck', 'Use browser spellcheck in task notes and planning fields.')}</div>`,
@@ -1488,31 +1553,15 @@ function settingsPageHtml(page) {
     shortcuts: `<p class="settings-lede">View, search, and use every available keyboard command.</p><button class="primary-button" data-settings-open-shortcuts>Open keyboard shortcuts</button>`,
     focus: `<p class="settings-lede">Set the default timing for deep-work and Pomodoro sessions.</p><div class="settings-card settings-three-column"><label>Focus session<input type="number" min="5" max="300" step="5" data-setting="focusMinutes" value="${settingsPreferences.focusMinutes}"><small>minutes</small></label><label>Pomodoro<input type="number" min="5" max="90" step="5" data-setting="pomodoroMinutes" value="${settingsPreferences.pomodoroMinutes}"><small>minutes</small></label><label>Break<input type="number" min="1" max="30" data-setting="breakMinutes" value="${settingsPreferences.breakMinutes}"><small>minutes</small></label></div>`,
     focusBar: `<p class="settings-lede">Keep the current task and timer visible while you work.</p><div class="settings-card">${settingToggle('focusBar', 'Focus Bar', 'Show a compact floating timer inside Maki.')}</div>`,
-    menuBar: plannedSettingsCard('macOS Menu Bar', 'A native macOS companion will expose the active task and timer from the menu bar.'),
-    sounds: plannedSettingsCard('Focus Sounds', 'Ambient soundscapes and session chimes will arrive with the desktop app.'),
-    ai: plannedSettingsCard('Maki AI', 'AI planning, estimation, summaries, and voice controls are mapped but remain disabled until the AI service is introduced.'),
     beta: `<p class="settings-lede">Try experimental workspace features before their general release.</p><div class="settings-card">${settingToggle('betaFeatures', 'Beta features', 'Receive early access to work-in-progress tools.')}</div>`,
     notifications: `<p class="settings-lede">Choose which moments deserve your attention.</p><div class="settings-card">${settingToggle('desktopNotifications', 'Desktop notifications', 'Timer completions, meeting reminders, and conflicts.')}${settingToggle('planningReminders', 'Daily planning reminder', 'Remind me near the start of my workday.')}${settingToggle('shutdownReminders', 'Daily shutdown reminder', 'Remind me before the end of my workday.')}</div>`,
     profile: `<p class="settings-lede">Your profile is visible to people who share a workspace with you.</p><div class="settings-card"><label>Display name<input data-setting="profileName" value="${escapeHtml(fullName)}"></label><label>Email<input value="${escapeHtml(email)}" disabled></label></div>`,
     account: `<p class="settings-lede">Manage this account and its local workspace data.</p><div class="settings-card"><div class="settings-action-row"><span><strong>Signed in account</strong><small>${escapeHtml(email)}</small></span><button data-settings-signout>Log out</button></div><div class="settings-action-row"><span><strong>Export workspace</strong><small>Download a JSON copy of tasks, projects, and settings.</small></span><button data-settings-export>Export</button></div></div>`,
     channels: `<p class="settings-lede">Projects organize tasks, schedules, and shared work.</p><div class="settings-card">${projects.map(project => `<div class="settings-action-row"><span><strong><i class="project-dot ${project.color}"></i>${escapeHtml(project.name)}</strong><small>${tasks.filter(task => task.project === project.name).length} tasks</small></span><button data-project="${escapeHtml(project.name)}" data-view-target="board">Open</button></div>`).join('')}</div>`,
-    members: `<p class="settings-lede">People with access to this workspace.</p><div class="settings-card"><div class="member-row"><span class="avatar" aria-hidden="true"></span><span><strong>${escapeHtml(fullName)}</strong><small>${escapeHtml(email)} · Owner</small></span></div>${plannedSettingsCard('Workspace invitations', 'Team invitations and shared workspace roles are planned.')}</div>`,
     privacy: `<p class="settings-lede">Your personal task details remain private by default.</p><div class="settings-card">${settingToggle('privateByDefault', 'Private tasks by default', 'Only explicitly shared projects can be seen by other members.')}${settingToggle('hideCalendarDetails', 'Hide calendar event details', 'Show busy time without event titles in shared views.')}</div>`,
-    billing: plannedSettingsCard('Billing', 'Maki is currently in private beta. Subscription and invoice controls will appear here before paid plans launch.'),
-    management: `<p class="settings-lede">Workspace identity and ownership.</p><div class="settings-card"><label>Workspace name<input data-setting="workspaceName" value="Maki"></label><div class="settings-action-row danger"><span><strong>Delete workspace</strong><small>Disabled during private beta.</small></span><button disabled>Delete</button></div></div>`,
-    calendar: `<p class="settings-lede">See events beside tasks and timebox work onto your real calendar.</p><div class="settings-connect-buttons"><button class="primary-button" data-settings-google-calendar>＋ Add Google Calendar</button><button disabled>＋ Add Outlook Calendar <small>Planned</small></button><button disabled>＋ Add iCloud Calendar <small>Planned</small></button></div><div class="settings-card"><div class="integration-account"><span class="connector-logo google">31</span><span><strong>${escapeHtml(email)}</strong><small>Google Calendar · ${calendarEvents.length} events loaded</small></span><button data-settings-google-calendar>${calendarSyncUserId ? 'Sync now' : 'Connect'}</button></div></div><h3 class="settings-subtitle">Meeting import</h3><div class="settings-card"><label>How meetings enter your task list<select data-setting="meetingImport"><option value="review">Review during planning</option><option value="auto">Auto-sync meetings</option><option value="off">Do not import</option></select></label>${settingToggle('meetingExclusions', 'Exclude declined, cancelled, and all-day events', 'Five sensible exclusion rules are enabled by default.')}${settingToggle('autoCompleteMeetings', 'Auto-complete imported meetings', 'Complete the task when its calendar event ends.')}</div><h3 class="settings-subtitle">Additional calendar tools</h3>${plannedSettingsCard('Zoom and Google Contacts', 'Zoom account linking and contact search are planned integrations.')}`,
-    email: `<p class="settings-lede">Turn messages that require action into tasks.</p><div class="settings-connect-buttons"><button disabled>＋ Add Gmail account <small>Planned</small></button><button disabled>＋ Add Outlook account <small>Planned</small></button></div>${plannedSettingsCard('Email triage and forwarding', 'Inbox browsing, email-to-task conversion, labels, and private forwarding addresses are planned. No forwarding address is generated until the service is secure.')}`,
-    mcp: plannedSettingsCard('MCP integration', 'Connect external tools through Model Context Protocol after permission and security controls are ready.'),
-    slack: plannedSettingsCard('Slack', 'Turn Slack messages into Maki tasks and share daily plans to a channel.'),
-    zapier: plannedSettingsCard('Zapier', 'Automation triggers and actions are planned after the public API launches.'),
-    toggl: plannedSettingsCard('Toggl', 'Sync active timers and actual task duration with Toggl.'),
-    google_tasks: plannedSettingsCard('Google Tasks', 'Import and complete Google Tasks from your Maki workspace.'),
+    calendar: `<p class="settings-lede">See events beside tasks and timebox work onto your real calendar.</p><div class="settings-connect-buttons"><button class="primary-button" data-settings-google-calendar>＋ Add Google Calendar</button></div><div class="settings-card"><div class="integration-account"><span class="connector-logo google">31</span><span><strong>${escapeHtml(email)}</strong><small>Google Calendar · ${calendarEvents.length} events loaded</small></span><button data-settings-google-calendar>${calendarSyncUserId ? 'Sync now' : 'Connect'}</button></div></div><h3 class="settings-subtitle">Meeting import</h3><div class="settings-card"><label>How meetings enter your task list<select data-setting="meetingImport"><option value="review">Review during planning</option><option value="auto">Auto-sync meetings</option><option value="off">Do not import</option></select></label>${settingToggle('meetingExclusions', 'Exclude declined, cancelled, and all-day events', 'Five sensible exclusion rules are enabled by default.')}${settingToggle('autoCompleteMeetings', 'Auto-complete imported meetings', 'Complete the task when its calendar event ends.')}</div>`,
   };
-  if (connector && !pages[page]) {
-    const connected = onboardingSelection.has(page);
-    pages[page] = `<div class="connector-settings-hero"><span class="connector-logo" style="--connector:${connector[2]}">${connector[3]}</span><div><h3>${connector[1]}</h3><p>${connected ? 'Selected during onboarding. Finish authorization when this connector becomes available.' : 'Bring tasks from this service into daily planning.'}</p></div></div>${plannedSettingsCard(`${connector[1]} connector`, 'The connector is represented throughout onboarding and planning. OAuth and two-way synchronization are planned.')}<button class="secondary-button" data-settings-manage-connectors>Manage selected tools</button>`;
-  }
-  return pages[page] || plannedSettingsCard('Coming soon', 'This settings area is mapped and will be enabled as the underlying feature ships.');
+  return pages[page] || '<p class="settings-lede">This settings area is unavailable.</p>';
 }
 
 function settingsConsoleHtml(page = settingsPage) {
@@ -1545,12 +1594,6 @@ function openSettingsConsole(page = settingsPage) {
     if (event.target.closest('[data-settings-return]')) { modal.close(); closeWorkspaceMenu(); return; }
     if (event.target.closest('[data-settings-open-shortcuts]')) { openWorkspaceUtility('shortcuts'); return; }
     if (event.target.closest('[data-settings-google-calendar]')) { $('#syncButton').click(); return; }
-    if (event.target.closest('[data-settings-manage-connectors]')) {
-      modal.close();
-      try { showOnboarding(await loadOnboardingPreferences()); }
-      catch (error) { showToast(`Integrations unavailable: ${error.message}`); }
-      return;
-    }
     if (event.target.closest('[data-settings-signout]')) { await signOut(); window.location.assign('/'); return; }
     if (event.target.closest('[data-settings-export]')) {
       const blob = new Blob([JSON.stringify({ tasks, projects, settings: settingsPreferences }, null, 2)], { type: 'application/json' });
@@ -1597,6 +1640,8 @@ function openWorkspaceUtility(action) {
   body.oninput = null;
   body.onclick = null;
   const completed = tasks.filter(task => task.status === 'done');
+  const overdue = tasks.filter(task => task.status !== 'done' && task.date === 'overdue');
+  const todayOpen = tasks.filter(task => task.status !== 'done' && task.date === 'today');
   const plannedMinutes = tasks.reduce((sum, task) => sum + (Number(task.plannedMinutes) || Number.parseInt(task.duration, 10) || 0), 0);
   const screens = {
     settings: {
@@ -1604,6 +1649,11 @@ function openWorkspaceUtility(action) {
     },
     analytics: {
       kicker: 'Workspace', title: 'Analytics', html: `<div class="utility-grid"><div class="utility-card big-number"><span>Tasks completed</span><strong>${completed.length}</strong><p>Across this workspace</p></div><div class="utility-card big-number"><span>Planned focus time</span><strong>${minutesLabel(plannedMinutes)}</strong><p>Across all scheduled tasks</p></div><div class="utility-card"><strong>${projects.length} projects</strong><span>${tasks.filter(task => task.status !== 'done').length} open tasks remain.</span></div><div class="utility-card"><strong>${completed.filter(task => task.date === 'today').length} done today</strong><span>Your daily highlights update as work is completed.</span></div></div>`,
+    },
+    notifications: {
+      kicker: 'Workspace', title: 'Notifications', html: overdue.length || todayOpen.length
+        ? `<div class="utility-grid">${overdue.length ? `<button class="utility-card utility-card-button" data-notification-view="overdue"><strong>${overdue.length} overdue task${overdue.length === 1 ? '' : 's'}</strong><span>Review work that needs a new date.</span></button>` : ''}${todayOpen.length ? `<button class="utility-card utility-card-button" data-notification-view="today"><strong>${todayOpen.length} task${todayOpen.length === 1 ? '' : 's'} left today</strong><span>Open today’s task list.</span></button>` : ''}</div>`
+        : '<div class="trash-empty"><span>✓</span><strong>You’re all caught up</strong><p>No overdue or open tasks need attention.</p></div>',
     },
     shortcuts: {
       kicker: 'Resources', title: 'Keyboard shortcuts', html: shortcutPanelHtml(),
@@ -1652,6 +1702,19 @@ function openWorkspaceUtility(action) {
       const remove = event.target.closest('[data-trash-delete]');
       if (restore) restoreTrashedTask(restore.dataset.trashRestore);
       if (remove) permanentlyDeleteTrashedTask(remove.dataset.trashDelete);
+    };
+  }
+  if (action === 'notifications') {
+    body.onclick = event => {
+      const target = event.target.closest('[data-notification-view]');
+      if (!target) return;
+      modal.close();
+      resetFilters();
+      currentFilter = target.dataset.notificationView === 'today' ? 'today' : 'all';
+      activeFilters.due = target.dataset.notificationView === 'overdue' ? 'overdue' : 'all';
+      $$('.segmented [data-filter]').forEach(button => button.classList.toggle('active', button.dataset.filter === currentFilter));
+      syncFilterControls();
+      switchView('tasks');
     };
   }
 }
@@ -1951,8 +2014,6 @@ $('#syncButton').onclick = async function () {
 $('#scheduleSwitch').onclick = function () { this.classList.toggle('on'); this.setAttribute('aria-checked', this.classList.contains('on')); };
 $('#taskTitleInput').addEventListener('input', applyTaskAutomations);
 $('#focusButton').onclick = () => switchView('focus');
-$('#focusClose').onclick = () => $('#focusOverlay').classList.remove('open');
-$('#focusToggle').onclick = function () { focusRunning = !focusRunning; this.textContent = focusRunning ? 'Pause' : 'Resume'; };
 $$('[data-focus-mode]').forEach(button => button.onclick = () => {
   focusMode = button.dataset.focusMode;
   workspaceFocusRunning = false;
@@ -1986,11 +2047,48 @@ $('#pomodoroLengths').onclick = event => {
   setWorkspaceFocusSeconds(Number(button.dataset.pomodoroMinutes));
   $('#workspaceFocusStart').textContent = '▷ Start';
 };
-$('#prevWeek').onclick = () => { weekOffset--; refreshCalendarEvents(); };
-$('#nextWeek').onclick = () => { weekOffset++; refreshCalendarEvents(); };
-$('#calendarTodayButton').onclick = () => { weekOffset = 0; refreshCalendarEvents(); };
+$('#nextWeek').onclick = () => { calendarMode === 'month' ? monthOffset++ : weekOffset++; refreshCalendarEvents(); };
+$('#prevWeek').onclick = () => { calendarMode === 'month' ? monthOffset-- : weekOffset--; refreshCalendarEvents(); };
+$('#calendarTodayButton').onclick = () => { weekOffset = 0; monthOffset = 0; refreshCalendarEvents(); };
+$('#calendarMode').onclick = event => {
+  const button = event.target.closest('[data-calendar-mode]');
+  if (!button || button.dataset.calendarMode === calendarMode) return;
+  calendarMode = button.dataset.calendarMode;
+  $$('#calendarMode button').forEach(item => item.classList.toggle('active', item === button));
+  refreshCalendarEvents();
+};
 $('#planDayButton').onclick = () => openPlanner();
-$('#addProjectButton').onclick = () => showToast('Project creation is ready for you');
+$('#addProjectButton').onclick = () => {
+  $('#projectForm').reset();
+  $('#projectModal').showModal();
+  setTimeout(() => $('#projectNameInput').focus(), 50);
+};
+$('#closeProjectModal').onclick = () => $('#projectModal').close();
+$('#projectForm').onsubmit = async event => {
+  event.preventDefault();
+  const button = $('#projectForm button[type="submit"]');
+  button.disabled = true;
+  try {
+    const project = await createProject({ name: $('#projectNameInput').value, color: new FormData(event.currentTarget).get('projectColor') });
+    projects = [...projects, project];
+    activeProject = project.name;
+    projectViewScope = project.name;
+    renderAll();
+    $('#projectModal').close();
+    switchView('board', $(`[data-project="${CSS.escape(project.name)}"]`));
+    showToast('Project created');
+  } catch (error) {
+    showToast(error.message);
+  } finally { button.disabled = false; }
+};
+$('#boardShareButton').onclick = async () => {
+  const projectTasks = tasks.filter(task => task.project === activeProject);
+  const summary = `${activeProject} — ${projectTasks.filter(task => task.status !== 'done').length} open, ${projectTasks.filter(task => task.status === 'done').length} complete`;
+  try {
+    await navigator.clipboard.writeText(summary);
+    showToast('Project summary copied');
+  } catch { showToast(summary); }
+};
 
 $('#closePlanningButton').onclick = () => $('#planningModal').close();
 $('#cancelPlanningButton').onclick = () => {
@@ -2228,9 +2326,23 @@ $('#taskForm').addEventListener('submit', async event => {
   const title = $('#taskTitleInput').value.trim();
   if (!title) return;
   const project = $('#taskProjectInput').value || 'Inbox';
+  const date = $('#taskDateInput').value;
+  const dueDate = dueDateForTaskBucket(date);
+  const plannedMinutes = Number($('#taskDurationInput').value);
+  const shouldSchedule = $('#scheduleSwitch').classList.contains('on');
+  const scheduledStart = shouldSchedule ? availableTaskStart(dueDate, plannedMinutes) : null;
+  if (shouldSchedule && !dueDate) {
+    showToast('Choose a date before blocking calendar time');
+    return;
+  }
+  if (shouldSchedule && !scheduledStart) {
+    showToast('No open space fits inside this workday');
+    return;
+  }
   const task = {
-    id: crypto.randomUUID(), title, project, notes: $('#taskNotesInput').value.trim(), date: $('#taskDateInput').value,
-    time: '', duration: `${$('#taskDurationInput').value}m`, plannedMinutes: Number($('#taskDurationInput').value), status: 'todo',
+    id: crypto.randomUUID(), title, project, notes: $('#taskNotesInput').value.trim(), date, dueDate,
+    time: scheduledStart ? `${scheduledStart.getHours() % 12 || 12}:${String(scheduledStart.getMinutes()).padStart(2, '0')}` : '', scheduledAt: scheduledStart?.toISOString() || null,
+    duration: `${plannedMinutes}m`, plannedMinutes, status: 'todo',
     priority: $('#taskPriorityInput').value, color: colorForProject(project)
   };
   tasks.unshift(task); save(); renderAll(); closeTaskModal(); event.target.reset(); syncTaskDropdowns(); $('#scheduleSwitch').classList.remove('on'); showToast('Task added');
@@ -2289,7 +2401,7 @@ document.addEventListener('keydown', async event => {
   if (event.key === 'Escape') { closeProfileMenu(); closeWorkspaceMenu(); closeTaskDropdowns(); closeSearch(); $('.sidebar').classList.remove('open'); }
 });
 
-$('.notification-button').onclick = () => showToast('You’re all caught up');
+$('.notification-button').onclick = () => openWorkspaceUtility('notifications');
 $$('.habit-check').forEach(button => button.onclick = () => { button.classList.toggle('done'); button.textContent = button.classList.contains('done') ? '✓' : ''; });
 
 $('#continueOnboardingButton').onclick = async () => {
@@ -2554,11 +2666,7 @@ $('#magicLinkForm').addEventListener('submit', async event => {
 
 initAuth({
   onReady: async ({ configured, user, providerToken, providerRefreshToken, error }) => {
-    let workspaceRoute = window.location.pathname === '/app';
-    if (workspaceRoute && !user) {
-      window.history.replaceState({}, document.title, '/');
-      workspaceRoute = false;
-    }
+    const workspaceRoute = window.location.pathname === '/app';
     $('#authGate').hidden = false;
     $('.app-shell').hidden = true;
     if (!workspaceRoute) initLandingMotion();
@@ -2581,6 +2689,22 @@ initAuth({
       $('#googleSignInButton').textContent = configured ? 'Continue with Google' : 'Sign-in unavailable';
       $('.auth-divider').hidden = false;
       $('#magicLinkForm').hidden = false;
+      if (workspaceRoute) {
+        $('.profile-row strong').textContent = 'Local workspace';
+        $('.profile-row small').textContent = 'Saved in this browser';
+        $('.profile-menu-details strong').textContent = 'Local workspace';
+        $('.profile-menu-details small').textContent = 'Saved in this browser';
+        $('#workspaceMenuEmail').textContent = 'Local workspace';
+        initDateAndGreeting();
+        const workspaceState = await hydratePersistence(null);
+        if (!workspaceState.ready) return;
+        const onboarding = await loadOnboardingPreferences();
+        if (onboarding?.workday_start) $('#workdayStartInput').value = String(onboarding.workday_start).slice(0, 5);
+        if (onboarding?.workday_end) $('#workdayEndInput').value = String(onboarding.workday_end).slice(0, 5);
+        $('#authGate').hidden = true;
+        if (!onboarding?.completed_at) showOnboarding(onboarding);
+        else $('.app-shell').hidden = false;
+      }
       return;
     }
     persistLocalTasks([]);

@@ -1,6 +1,7 @@
 import { getAuthState, getSupabaseClient } from './supabase.js';
 
 const LOCAL_TASKS_KEY = 'maki-tasks';
+const LOCAL_PROJECTS_KEY = 'maki-projects';
 const LOCAL_FILTERS_KEY = 'maki-saved-filters';
 const LOCAL_PLANS_KEY = 'maki-daily-plans';
 const LOCAL_ONBOARDING_KEY = 'maki-onboarding';
@@ -130,9 +131,32 @@ const taskToRow = (task, projectId) => {
 
 function localWorkspace() {
   const localTasks = JSON.parse(localStorage.getItem(LOCAL_TASKS_KEY) || '[]');
-  projects = [];
+  projects = JSON.parse(localStorage.getItem(LOCAL_PROJECTS_KEY) || '[]');
   savedFilters = JSON.parse(localStorage.getItem(LOCAL_FILTERS_KEY) || '[]');
-  return { mode: 'local', tasks: localTasks, projects, savedFilters, isEmpty: localTasks.length === 0 };
+  return { mode: 'local', tasks: localTasks, projects, savedFilters, isEmpty: localTasks.length === 0 && projects.length === 0 };
+}
+
+export async function createProject({ name, color = 'coral' }) {
+  const cleanName = String(name || '').trim().slice(0, 120);
+  if (!cleanName) throw new Error('Project name is required.');
+  if (projects.some(project => project.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
+    throw new Error('A project with this name already exists.');
+  }
+  const client = getSupabaseClient();
+  const { configured, user } = getAuthState();
+  if (!configured || !client || !user) {
+    const project = { id: crypto.randomUUID(), name: cleanName, color, position: projects.length };
+    projects = [...projects, project];
+    localStorage.setItem(LOCAL_PROJECTS_KEY, JSON.stringify(projects));
+    return project;
+  }
+  const { data, error } = await client.from('projects')
+    .insert({ user_id: user.id, name: cleanName, color, position: projects.length })
+    .select('id,name,color,position')
+    .single();
+  if (error) throw error;
+  projects = [...projects, data];
+  return data;
 }
 
 function withoutLegacyDemoData(taskRows, projectRows) {

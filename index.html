@@ -211,7 +211,7 @@
       <section class="view" id="boardView" data-view="board">
         <div class="page-heading board-heading">
           <div><p class="eyebrow">Project</p><h1 id="boardTitle">Projects</h1><p class="heading-subtitle" id="boardSubtitle">Choose a project to see its work.</p></div>
-          <div class="heading-actions"><button class="secondary-button">Share</button><button class="primary-button" data-open-task>+ Add task</button></div>
+          <div class="heading-actions"><button class="secondary-button" id="boardShareButton">Share</button><button class="primary-button" data-open-task>+ Add task</button></div>
         </div>
         <div class="view-tabs"><button class="active">Board</button><button data-switch="tasks">List</button><button data-switch="calendar">Timeline</button></div>
         <div class="kanban" id="kanbanBoard"></div>
@@ -256,7 +256,7 @@
           <div class="heading-actions"><button class="secondary-button" id="calendarTodayButton">Today</button><button class="primary-button" data-open-task>+ Schedule</button></div>
         </div>
         <div class="view-tabs project-context-tabs" hidden><button data-project-switch="board">Board</button><button data-project-switch="tasks">List</button><button data-project-switch="calendar">Timeline</button></div>
-        <div class="calendar-toolbar"><button class="icon-button" id="prevWeek" aria-label="Previous week"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><strong id="calendarMonth"></strong><button class="icon-button" id="nextWeek" aria-label="Next week"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><div class="segmented"><button class="active">Week</button><button>Month</button></div></div>
+        <div class="calendar-toolbar"><button class="icon-button" id="prevWeek" aria-label="Previous period"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><strong id="calendarMonth"></strong><button class="icon-button" id="nextWeek" aria-label="Next period"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button><div class="segmented" id="calendarMode"><button class="active" data-calendar-mode="week">Week</button><button data-calendar-mode="month">Month</button></div></div>
         <div class="week-calendar panel" id="weekCalendar"></div>
       </section>
 
@@ -447,6 +447,20 @@
     </form>
   </dialog>
 
+  <dialog class="task-modal project-modal" id="projectModal" aria-labelledby="projectModalTitle">
+    <form method="dialog" id="projectForm">
+      <div class="modal-header"><span class="modal-kicker">New project</span><button type="button" class="icon-button" id="closeProjectModal" aria-label="Close">×</button></div>
+      <h2 id="projectModalTitle">Create a project</h2>
+      <label class="project-name-field">Project name<input id="projectNameInput" maxlength="120" autocomplete="off" required placeholder="e.g. Website launch" /></label>
+      <fieldset class="project-color-field"><legend>Colour</legend><div>
+        <label><input type="radio" name="projectColor" value="coral" checked><span class="project-dot coral"></span>Coral</label>
+        <label><input type="radio" name="projectColor" value="sage"><span class="project-dot sage"></span>Sage</label>
+        <label><input type="radio" name="projectColor" value="blue"><span class="project-dot blue"></span>Blue</label>
+      </div></fieldset>
+      <div class="modal-footer"><span>Projects keep related work together.</span><button class="primary-button" type="submit">Create project</button></div>
+    </form>
+  </dialog>
+
   <dialog class="task-detail-modal" id="taskDetailModal" aria-labelledby="taskDetailTitle">
     <div class="task-detail-shell">
       <header class="task-detail-toolbar">
@@ -566,11 +580,6 @@
   </div>
 
   <div class="toast" id="toast"><span class="toast-icon">✓</span><span id="toastText">Task added</span></div>
-  <div class="focus-overlay" id="focusOverlay">
-    <button class="focus-close" id="focusClose">×</button>
-    <div class="focus-content"><span class="focus-label">FOCUS SESSION</span><p>Choose a task to focus on</p><div class="focus-timer" id="focusTimer">25:00</div><button id="focusToggle">Pause</button><small>Your task data appears here</small></div>
-  </div>
-
   <section class="auth-gate landing" id="authGate" aria-labelledby="landingHeadline" hidden>
     <nav class="landing-nav" aria-label="Landing page navigation">
       <a class="landing-brand" href="#landingTop" aria-label="Maki home"><span class="brand-mark" aria-hidden="true"></span><span>maki</span></a>
@@ -677,6 +686,7 @@
             <label for="magicLinkEmail">Email address</label>
             <div><input id="magicLinkEmail" name="email" type="email" autocomplete="email" placeholder="you@example.com" required /><button type="submit">Get started</button></div>
           </form>
+          <a class="local-preview-link" href="/app">Continue without an account →</a>
           <small>By continuing, you agree to keep making time for the good stuff.</small>
           <div class="auth-status" id="authStatus" role="status"></div>
         </div>
