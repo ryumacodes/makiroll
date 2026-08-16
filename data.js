@@ -225,8 +225,8 @@ export async function loadOnboardingPreferences() {
   let { data, error } = await client.from('onboarding_preferences').select(fields).eq('user_id', user.id).maybeSingle();
   if (error && ['PGRST204', '42703'].includes(error.code)) {
     ({ data, error } = await client.from('onboarding_preferences')
-      .select('selected_providers,workday_start,workday_end,planning_ritual,completed_at').eq('user_id', user.id).maybeSingle());
-    data = { ...(data || {}), ...(JSON.parse(localStorage.getItem(LOCAL_ONBOARDING_KEY) || 'null') || {}) };
+      .select('selected_providers,workday_start,workday_end,completed_at').eq('user_id', user.id).maybeSingle());
+    data = { planning_ritual: 'start_of_day', ...(data || {}), ...(JSON.parse(localStorage.getItem(LOCAL_ONBOARDING_KEY) || 'null') || {}) };
   }
   if (error) throw error;
   return data;
@@ -269,13 +269,12 @@ export async function saveOnboardingPreferences(selectedProviders, {
       selected_providers: providers,
       workday_start: workdayStart,
       workday_end: workdayEnd,
-      planning_ritual: planningRitual,
       completed_at: preferences.completed_at,
       updated_at: new Date().toISOString()
     };
     ({ data, error } = await client.from('onboarding_preferences')
       .upsert({ user_id: user.id, ...legacy }, { onConflict: 'user_id' })
-      .select('selected_providers,workday_start,workday_end,planning_ritual,completed_at').single());
+      .select('selected_providers,workday_start,workday_end,completed_at').single());
     data = { ...(data || {}), ...preferences };
   }
   if (error) throw error;
