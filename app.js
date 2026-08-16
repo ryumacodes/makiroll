@@ -582,13 +582,13 @@ function renderCalendar() {
 
 function calendarItemsForDay(day) {
   const key = localDateKey(day);
-  const local = tasks.filter(task => {
+  const taskItems = tasks.filter(task => {
     if (['done', 'archived'].includes(task.status) || (projectViewScope && task.project !== projectViewScope)) return false;
     return task.dueDate === key || (task.scheduledAt && localDateKey(new Date(task.scheduledAt)) === key);
   }).map(task => ({ title: task.title, color: task.color, taskId: task.id }));
-  const remote = projectViewScope ? [] : calendarEvents.filter(event => event.starts_at && localDateKey(new Date(event.starts_at)) === key)
+  const eventItems = projectViewScope ? [] : calendarEvents.filter(event => event.starts_at && localDateKey(new Date(event.starts_at)) === key)
     .map(event => ({ title: event.title, color: 'blue' }));
-  return [...local, ...remote];
+  return [...taskItems, ...eventItems];
 }
 
 function renderMonthCalendar() {
@@ -1032,7 +1032,6 @@ function dueDateForTaskBucket(bucket) {
 }
 
 function availableTaskStart(dateKey, durationMinutes) {
-  if (!dateKey) return null;
   const start = timeMinutes($('#workdayStartInput').value || '09:00');
   const end = timeMinutes($('#workdayEndInput').value || '17:00');
   const intervals = [
@@ -1561,7 +1560,7 @@ function settingsPageHtml(page) {
     privacy: `<p class="settings-lede">Your personal task details remain private by default.</p><div class="settings-card">${settingToggle('privateByDefault', 'Private tasks by default', 'Only explicitly shared projects can be seen by other members.')}${settingToggle('hideCalendarDetails', 'Hide calendar event details', 'Show busy time without event titles in shared views.')}</div>`,
     calendar: `<p class="settings-lede">See events beside tasks and timebox work onto your real calendar.</p><div class="settings-connect-buttons"><button class="primary-button" data-settings-google-calendar>＋ Add Google Calendar</button></div><div class="settings-card"><div class="integration-account"><span class="connector-logo google">31</span><span><strong>${escapeHtml(email)}</strong><small>Google Calendar · ${calendarEvents.length} events loaded</small></span><button data-settings-google-calendar>${calendarSyncUserId ? 'Sync now' : 'Connect'}</button></div></div><h3 class="settings-subtitle">Meeting import</h3><div class="settings-card"><label>How meetings enter your task list<select data-setting="meetingImport"><option value="review">Review during planning</option><option value="auto">Auto-sync meetings</option><option value="off">Do not import</option></select></label>${settingToggle('meetingExclusions', 'Exclude declined, cancelled, and all-day events', 'Five sensible exclusion rules are enabled by default.')}${settingToggle('autoCompleteMeetings', 'Auto-complete imported meetings', 'Complete the task when its calendar event ends.')}</div>`,
   };
-  return pages[page] || '<p class="settings-lede">This settings area is unavailable.</p>';
+  return pages[page];
 }
 
 function settingsConsoleHtml(page = settingsPage) {
@@ -2047,8 +2046,16 @@ $('#pomodoroLengths').onclick = event => {
   setWorkspaceFocusSeconds(Number(button.dataset.pomodoroMinutes));
   $('#workspaceFocusStart').textContent = '▷ Start';
 };
-$('#nextWeek').onclick = () => { calendarMode === 'month' ? monthOffset++ : weekOffset++; refreshCalendarEvents(); };
-$('#prevWeek').onclick = () => { calendarMode === 'month' ? monthOffset-- : weekOffset--; refreshCalendarEvents(); };
+$('#nextWeek').onclick = () => {
+  if (calendarMode === 'month') monthOffset++;
+  else weekOffset++;
+  refreshCalendarEvents();
+};
+$('#prevWeek').onclick = () => {
+  if (calendarMode === 'month') monthOffset--;
+  else weekOffset--;
+  refreshCalendarEvents();
+};
 $('#calendarTodayButton').onclick = () => { weekOffset = 0; monthOffset = 0; refreshCalendarEvents(); };
 $('#calendarMode').onclick = event => {
   const button = event.target.closest('[data-calendar-mode]');
@@ -2330,11 +2337,11 @@ $('#taskForm').addEventListener('submit', async event => {
   const dueDate = dueDateForTaskBucket(date);
   const plannedMinutes = Number($('#taskDurationInput').value);
   const shouldSchedule = $('#scheduleSwitch').classList.contains('on');
-  const scheduledStart = shouldSchedule ? availableTaskStart(dueDate, plannedMinutes) : null;
   if (shouldSchedule && !dueDate) {
     showToast('Choose a date before blocking calendar time');
     return;
   }
+  const scheduledStart = shouldSchedule ? availableTaskStart(dueDate, plannedMinutes) : null;
   if (shouldSchedule && !scheduledStart) {
     showToast('No open space fits inside this workday');
     return;

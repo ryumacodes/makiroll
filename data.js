@@ -137,7 +137,7 @@ function localWorkspace() {
 }
 
 export async function createProject({ name, color = 'coral' }) {
-  const cleanName = String(name || '').trim().slice(0, 120);
+  const cleanName = name.trim().slice(0, 120);
   if (!cleanName) throw new Error('Project name is required.');
   if (projects.some(project => project.name.toLocaleLowerCase() === cleanName.toLocaleLowerCase())) {
     throw new Error('A project with this name already exists.');
