@@ -1,6 +1,6 @@
 # maki
 
-A calm, calendar-native place to decide what matters, make time for it, and get it done.
+Get it wrapped up with Maki: a calm, calendar-native place to decide what matters, make time for it, and get it done.
 
 > Early-stage software — Maki is under active development. Expect bugs, unfinished flows, and breaking changes.
 

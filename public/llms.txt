@@ -1,0 +1,16 @@
+# Maki
+
+> Get it wrapped up with Maki: a calm daily planner that brings tasks, projects, and calendar events into one realistic plan.
+
+Maki helps people decide what matters, make time for it, and get it done. It combines task capture, project boards, daily planning, calendar-aware scheduling, and a focused work timer in a single web application.
+
+## Product
+
+- [Maki](https://www.makiroll.xyz/): Start planning with Maki.
+- Category: Productivity and daily planning web application.
+- Key capabilities: tasks, projects, calendar synchronization, timeboxing, focus sessions, and local workspace preview.
+- Pricing: Free to start; no card required.
+
+## Positioning
+
+Maki is for people who want a realistic daily plan instead of a longer task list. Its purpose is to show tasks beside real calendar commitments and help shape a day that fits the available time.
