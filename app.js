@@ -85,13 +85,17 @@ const DEFAULT_AUTOMATIONS = {
 };
 
 const CONNECTORS = [
-  ['asana', 'Asana', '#f06a6a', 'A'], ['linear', 'Linear', '#6c6df1', 'L'],
-  ['clickup', 'ClickUp', '#c958e8', 'C'], ['monday', 'Monday.com', '#ffcc3d', 'M'],
-  ['github', 'GitHub', '#8f96a3', 'GH'], ['notion', 'Notion', '#e5e5e5', 'N'],
-  ['gmail', 'Gmail', '#ea4335', 'G'], ['outlook', 'Outlook', '#1689e8', 'O'],
-  ['google_tasks', 'Google Tasks', '#4285f4', 'GT'], ['todoist', 'Todoist', '#e44332', 'T'],
-  ['jira', 'Jira', '#2684ff', 'J'], ['trello', 'Trello', '#0c66e4', 'Tr']
+  ['asana', 'Asana', '#f06a6a', 'asana'], ['linear', 'Linear', '#6c6df1', 'linear'],
+  ['clickup', 'ClickUp', '#c958e8', 'clickup'], ['monday', 'Monday.com', '#ffcc3d', 'mondaydotcom'],
+  ['github', 'GitHub', '#8f96a3', 'github'], ['notion', 'Notion', '#e5e5e5', 'notion'],
+  ['gmail', 'Gmail', '#ea4335', 'gmail'], ['outlook', 'Outlook', '#1689e8', 'microsoftoutlook'],
+  ['google_tasks', 'Google Tasks', '#4285f4', 'googletasks'], ['todoist', 'Todoist', '#e44332', 'todoist'],
+  ['jira', 'Jira', '#2684ff', 'jira'], ['trello', 'Trello', '#0c66e4', 'trello']
 ];
+
+// Task-source integrations are not available yet. Keep their status next to the
+// connector catalogue so enabling a new provider is an intentional product change.
+const SUPPORTED_TASK_CONNECTORS = new Set();
 
 const SHORTCUT_GROUPS = [
   ['General', [['Open command menu', ['⌘', 'K']], ['Show keyboard shortcuts', ['?']]]],
@@ -135,16 +139,20 @@ function showToast(message) {
 }
 
 function renderOnboardingConnectors() {
-  $('#connectorGrid').innerHTML = CONNECTORS.map(([id, name, color, mark]) => `
-    <button class="connector-choice${onboardingSelection.has(id) ? ' selected' : ''}" data-connector="${id}" aria-pressed="${onboardingSelection.has(id)}">
-      <span class="connector-mark" style="--connector-color:${color}">${mark}</span><strong>${name}</strong><span class="connector-check">✓</span>
-    </button>`).join('');
+  $('#connectorGrid').innerHTML = CONNECTORS.map(([id, name, color, icon]) => {
+    const supported = SUPPORTED_TASK_CONNECTORS.has(id);
+    const selected = supported && onboardingSelection.has(id);
+    return `
+    <button class="connector-choice${selected ? ' selected' : ''}${supported ? '' : ' coming-soon'}" data-connector="${id}" aria-pressed="${selected}"${supported ? '' : ' disabled aria-disabled="true"'}>
+      <span class="connector-mark" style="--connector-color:${color}"><img src="https://cdn.simpleicons.org/${icon}" alt="" width="22" height="22" /></span><span class="connector-copy"><strong>${name}</strong>${supported ? '' : '<small>Coming soon</small>'}</span><span class="connector-check">✓</span>
+    </button>`;
+  }).join('');
   $$('[data-connector]').forEach(button => button.onclick = () => {
     const id = button.dataset.connector;
     onboardingSelection.has(id) ? onboardingSelection.delete(id) : onboardingSelection.add(id);
     renderOnboardingConnectors();
   });
-  const selectedConnectors = [...onboardingSelection].filter(id => CONNECTORS.some(([connectorId]) => connectorId === id)).length;
+  const selectedConnectors = [...onboardingSelection].filter(id => SUPPORTED_TASK_CONNECTORS.has(id)).length;
   $('#continueOnboardingButton').textContent = selectedConnectors ? `Continue with ${selectedConnectors} →` : 'Continue →';
 }
 
