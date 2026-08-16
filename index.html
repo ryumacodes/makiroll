@@ -330,11 +330,34 @@
 
   <section class="onboarding-gate" id="onboardingGate" aria-labelledby="onboardingTitle" hidden>
     <div class="onboarding-shell">
-      <header class="onboarding-brand"><span class="brand-mark" aria-hidden="true"><span></span></span><strong>maki</strong><span id="onboardingProgress">1 of 9</span></header>
-      <div class="onboarding-step" id="onboardingToolsStep">
+      <header class="onboarding-brand"><span class="brand-mark" aria-hidden="true"><span></span></span><strong>maki</strong><span id="onboardingProgress">1 of 11</span></header>
+      <div class="onboarding-step onboarding-choice-step" id="onboardingHistoryStep">
+        <p class="eyebrow">Start where you are</p>
+        <h1 id="onboardingHistoryTitle">Have you used another planning app before?</h1>
+        <p class="onboarding-lede">Bring the work you already have, or begin with a clean workspace.</p>
+        <div class="routine-choice-list">
+          <button type="button" class="routine-choice" id="importExistingWorkButton"><span><strong>Import my existing work</strong><small>Sunsama, TickTick, or a CSV export</small></span><span class="routine-check">→</span></button>
+          <button type="button" class="routine-choice" id="startFreshButton"><span><strong>Start fresh</strong><small>You can import a file later from settings</small></span><span class="routine-check">→</span></button>
+        </div>
+      </div>
+      <div class="onboarding-step onboarding-choice-step" id="onboardingImportStep" hidden>
+        <p class="eyebrow">Bring your work with you</p>
+        <h1 id="onboardingImportTitle">Import a task export</h1>
+        <p class="onboarding-lede">Choose a file from Sunsama, TickTick, or another task app. We will show you what we found before adding anything.</p>
+        <div class="import-source-list" role="radiogroup" aria-label="Import source">
+          <button type="button" class="routine-choice selected" data-import-source="Sunsama" role="radio" aria-checked="true"><span><strong>Sunsama export</strong><small>CSV or JSON</small></span><span class="routine-check">✓</span></button>
+          <button type="button" class="routine-choice" data-import-source="TickTick" role="radio" aria-checked="false"><span><strong>TickTick backup</strong><small>CSV</small></span><span class="routine-check">✓</span></button>
+          <button type="button" class="routine-choice" data-import-source="CSV" role="radio" aria-checked="false"><span><strong>Another task app</strong><small>CSV or JSON with task titles</small></span><span class="routine-check">✓</span></button>
+        </div>
+        <label class="import-file-picker" for="importFileInput"><strong>Choose an export file</strong><small id="importFileHint">CSV or JSON, up to 2,000 tasks</small><input id="importFileInput" type="file" accept=".csv,.json,text/csv,application/json" /></label>
+        <p class="import-preview" id="importPreview" role="status" hidden></p>
+        <p class="import-coming-soon">Direct imports from Todoist, Trello, and Asana are coming soon.</p>
+        <footer class="onboarding-actions"><button class="text-button" id="backToHistoryButton">← Back</button><div><button class="text-button" id="skipImportButton">Skip for now</button><button class="primary-button" id="confirmImportButton" disabled>Import and continue →</button></div></footer>
+      </div>
+      <div class="onboarding-step" id="onboardingToolsStep" hidden>
         <p class="eyebrow">Bring your work together</p>
         <h1 id="onboardingTitle">What tools do you use?</h1>
-        <p class="onboarding-lede">Choose everything you use to track work. We’ll keep your setup focused on the services that matter to you.</p>
+        <p class="onboarding-lede">Choose any other tools you use to track work. Direct imports are coming soon, and your choices help us prioritize them.</p>
         <div class="connector-grid" id="connectorGrid"></div>
         <footer class="onboarding-actions"><button class="text-button" id="skipOnboardingButton">Skip for now</button><button class="primary-button" id="continueOnboardingButton">Continue <span>→</span></button></footer>
       </div>

@@ -1,6 +1,7 @@
 import { completeGoogleCalendarConsent, connectGoogleCalendar, initAuth, signInWithGoogle, signInWithMagicLink, signOut, getAuthState } from './supabase.js';
 import { commitDayPlan, createProject, createSavedFilter, createTask, deleteSavedFilter, deleteTask, loadDailyPlan, loadOnboardingPreferences, loadWorkspace, persistLocalTasks, saveOnboardingPreferences, searchWorkspaceTasks, subscribeToWorkspace, updateTask } from './data.js';
 import { loadCalendarEvents, saveGoogleGrant, startCalendarSync, stopCalendarSync, syncGoogleCalendar } from './calendar.js';
+import { parseImportFile } from './importers.js';
 
 // Keep analytics off the critical path and avoid recording OAuth callback URLs.
 if (import.meta.env.PROD) {
@@ -66,6 +67,8 @@ let onboardingPlanningRitual = 'start_of_day';
 let onboardingFirstPlanDate = null;
 let onboardingWorkContext = '';
 let onboardingFirstDayGoal = '';
+let importSource = 'Sunsama';
+let importedTasks = [];
 let taskAutomationTouched = new Set();
 let activeTaskDetailId = null;
 let detailCalendarCursor = new Date();
@@ -141,7 +144,79 @@ function renderOnboardingConnectors() {
     onboardingSelection.has(id) ? onboardingSelection.delete(id) : onboardingSelection.add(id);
     renderOnboardingConnectors();
   });
-  $('#continueOnboardingButton').textContent = onboardingSelection.size ? `Continue with ${onboardingSelection.size} →` : 'Continue →';
+  const selectedConnectors = [...onboardingSelection].filter(id => CONNECTORS.some(([connectorId]) => connectorId === id)).length;
+  $('#continueOnboardingButton').textContent = selectedConnectors ? `Continue with ${selectedConnectors} →` : 'Continue →';
+}
+
+function importDateBucket(dueDate) {
+  if (!dueDate) return 'someday';
+  const today = localDateKey(new Date());
+  const tomorrow = localDateKey(datePlusDays(new Date(), 1));
+  if (dueDate < today) return 'overdue';
+  if (dueDate === today) return 'today';
+  if (dueDate === tomorrow) return 'tomorrow';
+  return 'upcoming';
+}
+
+function renderImportSourceChoices() {
+  $$('[data-import-source]').forEach(button => {
+    const selected = button.dataset.importSource === importSource;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-checked', String(selected));
+  });
+}
+
+function renderImportPreview() {
+  const preview = $('#importPreview');
+  const confirm = $('#confirmImportButton');
+  if (!importedTasks.length) {
+    preview.hidden = true;
+    confirm.disabled = true;
+    return;
+  }
+  const projectCount = new Set(importedTasks.map(task => task.project).filter(project => project !== 'Inbox')).size;
+  preview.textContent = `Ready to import ${importedTasks.length} tasks${projectCount ? ` across ${projectCount} projects` : ''}. Your existing Maki work will stay untouched.`;
+  preview.hidden = false;
+  confirm.disabled = false;
+}
+
+async function importTasks() {
+  const button = $('#confirmImportButton');
+  button.disabled = true;
+  button.textContent = 'Importing…';
+  try {
+    const names = new Set(projects.map(project => project.name.toLocaleLowerCase()));
+    const projectNames = [...new Set(importedTasks.map(task => task.project).filter(project => project !== 'Inbox'))];
+    for (const name of projectNames) {
+      if (names.has(name.toLocaleLowerCase())) continue;
+      const project = await createProject({ name });
+      projects = [...projects, project];
+      names.add(name.toLocaleLowerCase());
+    }
+    const imported = importedTasks.map((task, index) => ({
+      id: crypto.randomUUID(), title: task.title, notes: task.notes, project: task.project, dueDate: task.dueDate,
+      date: importDateBucket(task.dueDate), time: '', scheduledAt: null, duration: `${task.plannedMinutes}m`,
+      plannedMinutes: task.plannedMinutes, status: task.status, priority: task.priority, color: colorForProject(task.project),
+      completedAt: task.completedAt, position: Date.now() + index
+    }));
+    tasks = [...imported, ...tasks];
+    save(); renderAll();
+    const saved = await Promise.all(imported.map(task => createTask(task)));
+    const savedById = new Map(saved.map((task, index) => [imported[index].id, task]));
+    tasks = tasks.map(task => savedById.get(task.id) || task);
+    save(); renderAll();
+    onboardingSelection.add(`import_${importSource.toLowerCase()}`);
+    await saveOnboardingPreferences([...onboardingSelection], onboardingSaveOptions());
+    importedTasks = [];
+    renderImportPreview();
+    setOnboardingStep('tools');
+    showToast(`Imported ${imported.length} tasks`);
+  } catch (error) {
+    showToast(`Import paused: ${error.message}`);
+  } finally {
+    button.textContent = 'Import and continue →';
+    button.disabled = !importedTasks.length;
+  }
 }
 
 function renderConnectionList() {
@@ -240,6 +315,8 @@ const timeMinutes = value => {
 };
 
 function setOnboardingStep(step) {
+  const history = step === 'history';
+  const imports = step === 'import';
   const calendar = step === 'calendar';
   const schedule = step === 'schedule';
   const scheduleEnd = step === 'schedule-end';
@@ -248,7 +325,9 @@ function setOnboardingStep(step) {
   const workContext = step === 'work-context';
   const firstGoal = step === 'first-goal';
   const automations = step === 'automations';
-  $('#onboardingToolsStep').hidden = calendar || schedule || scheduleEnd || routine || firstDay || workContext || firstGoal || automations;
+  $('#onboardingHistoryStep').hidden = !history;
+  $('#onboardingImportStep').hidden = !imports;
+  $('#onboardingToolsStep').hidden = !(!history && !imports && !calendar && !schedule && !scheduleEnd && !routine && !firstDay && !workContext && !firstGoal && !automations);
   $('#onboardingConnectStep').hidden = !calendar;
   $('#onboardingTimeStep').hidden = !schedule;
   $('#onboardingEndTimeStep').hidden = !scheduleEnd;
@@ -257,8 +336,9 @@ function setOnboardingStep(step) {
   $('#onboardingWorkContextStep').hidden = !workContext;
   $('#onboardingFirstGoalStep').hidden = !firstGoal;
   $('#onboardingAutomationStep').hidden = !automations;
-  $('#onboardingGate').setAttribute('aria-labelledby', automations ? 'onboardingAutomationTitle' : firstGoal ? 'onboardingFirstGoalTitle' : workContext ? 'onboardingWorkContextTitle' : firstDay ? 'onboardingFirstDayTitle' : routine ? 'onboardingRoutineTitle' : scheduleEnd ? 'onboardingEndTimeTitle' : schedule ? 'onboardingTimeTitle' : calendar ? 'onboardingConnectTitle' : 'onboardingTitle');
-  $('#onboardingProgress').textContent = `${automations ? 9 : firstGoal ? 8 : workContext ? 7 : firstDay ? 6 : routine ? 5 : scheduleEnd ? 4 : schedule ? 3 : calendar ? 2 : 1} of 9`;
+  $('#onboardingGate').setAttribute('aria-labelledby', automations ? 'onboardingAutomationTitle' : firstGoal ? 'onboardingFirstGoalTitle' : workContext ? 'onboardingWorkContextTitle' : firstDay ? 'onboardingFirstDayTitle' : routine ? 'onboardingRoutineTitle' : scheduleEnd ? 'onboardingEndTimeTitle' : schedule ? 'onboardingTimeTitle' : calendar ? 'onboardingConnectTitle' : imports ? 'onboardingImportTitle' : history ? 'onboardingHistoryTitle' : 'onboardingTitle');
+  $('#onboardingProgress').textContent = `${automations ? 11 : firstGoal ? 10 : workContext ? 9 : firstDay ? 8 : routine ? 7 : scheduleEnd ? 6 : schedule ? 5 : calendar ? 4 : 3} of 11`;
+  if (imports) { renderImportSourceChoices(); renderImportPreview(); }
   if (calendar) renderConnectionList();
   if (schedule) {
     $('#onboardingWorkdayStart').value = onboardingWorkdayStart;
@@ -297,7 +377,7 @@ function showOnboarding(preferences = null) {
   onboardingWorkContext = preferences?.work_context || '';
   onboardingFirstDayGoal = preferences?.first_day_goal || '';
   renderOnboardingConnectors();
-  setOnboardingStep(onboardingSelection.has('google_calendar') ? 'calendar' : 'tools');
+  setOnboardingStep('history');
   $('#onboardingGate').hidden = false;
 }
 
@@ -2410,6 +2490,35 @@ document.addEventListener('keydown', async event => {
 
 $('.notification-button').onclick = () => openWorkspaceUtility('notifications');
 $$('.habit-check').forEach(button => button.onclick = () => { button.classList.toggle('done'); button.textContent = button.classList.contains('done') ? '✓' : ''; });
+
+$('#importExistingWorkButton').onclick = () => setOnboardingStep('import');
+$('#startFreshButton').onclick = () => setOnboardingStep('tools');
+$('#backToHistoryButton').onclick = () => setOnboardingStep('history');
+$('#skipImportButton').onclick = () => setOnboardingStep('tools');
+$$('[data-import-source]').forEach(button => button.onclick = () => {
+  importSource = button.dataset.importSource;
+  importedTasks = [];
+  $('#importFileInput').value = '';
+  $('#importFileHint').textContent = importSource === 'Sunsama' ? 'CSV or JSON, up to 2,000 tasks' : importSource === 'TickTick' ? 'CSV backup, up to 2,000 tasks' : 'CSV or JSON, up to 2,000 tasks';
+  renderImportSourceChoices();
+  renderImportPreview();
+});
+$('#importFileInput').onchange = async event => {
+  const [file] = event.target.files;
+  if (!file) return;
+  $('#importFileHint').textContent = `Reading ${file.name}…`;
+  try {
+    importedTasks = await parseImportFile(file, importSource);
+    $('#importFileHint').textContent = file.name;
+    renderImportPreview();
+  } catch (error) {
+    importedTasks = [];
+    $('#importFileHint').textContent = 'Choose a different CSV or JSON export';
+    renderImportPreview();
+    showToast(`Couldn’t read this file: ${error.message}`);
+  }
+};
+$('#confirmImportButton').onclick = importTasks;
 
 $('#continueOnboardingButton').onclick = async () => {
   try { await saveOnboardingPreferences([...onboardingSelection], onboardingSaveOptions()); setOnboardingStep('calendar'); }
