@@ -1,6 +1,6 @@
 # Maki production auth + calendar setup
 
-## 1. Google Auth Platform — the screen you are on
+## 1. Google Auth Platform: the screen you are on
 
 Create a **Web application** client named `makirolls`.
 

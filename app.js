@@ -210,7 +210,7 @@ function renderFirstPlanDateChoices() {
   const now = new Date();
   const weekend = [0, 6].includes(now.getDay());
   $('#onboardingFirstDayLede').textContent = weekend
-    ? 'Since it’s the weekend, we suggest your next Monday — but you can start sooner.'
+    ? 'Since it’s the weekend, we suggest your next Monday, but you can start sooner.'
     : 'Choose when you want to make your first focused plan. You can change this later.';
   $('#firstPlanDateChoices').innerHTML = firstPlanDateOptions(now).map(option => {
     const key = localDateKey(option.date);
@@ -531,7 +531,7 @@ function renderTasks() {
     if (!items.length) return '';
     return `<div class="task-group"><div class="task-group-title">${readableDate(group)} · ${items.length}</div>${items.map(task => `<div class="list-task ${task.status === 'done' ? 'completed' : ''}" data-task-detail="${task.id}">
       ${taskCheck(task)}<div><strong>${task.title}</strong><small>${taskDurationLabel(task)}${task.notes ? ` · ${task.notes}` : ''}</small></div>
-      <span class="task-project"><i class="project-dot ${task.color}"></i>${task.project}</span><span class="due-date ${group === 'today' && task.status !== 'done' ? 'overdue' : ''}">${task.time || '—'}</span>
+      <span class="task-project"><i class="project-dot ${task.color}"></i>${task.project}</span><span class="due-date ${group === 'today' && task.status !== 'done' ? 'overdue' : ''}">${task.time || 'No time'}</span>
     </div>`).join('')}</div>`;
   }).join('') || '<div class="empty-task-state"><span>⌕</span><strong>No matching tasks</strong><p>Try clearing a filter or searching for something else.</p><button class="secondary-button" data-clear-filters>Clear filters</button></div>';
   const availableTasks = projectViewScope ? tasks.filter(task => task.project === projectViewScope).length : tasks.length;
@@ -792,7 +792,7 @@ function renderPlanner() {
     ...rows.map(item => item.type === 'busy'
       ? `<div class="busy-slot"><time>${timeLabel(item.start)}</time><strong>${escapeHtml(item.title)}</strong></div>`
       : `<div class="planned-slot ${conflicts.has(item.taskId) ? 'conflict' : ''}"><input class="planned-time-input" type="time" step="900" data-plan-time="${escapeHtml(item.taskId)}" value="${String(item.start.getHours()).padStart(2, '0')}:${String(item.start.getMinutes()).padStart(2, '0')}" aria-label="Start time for ${escapeHtml(item.task?.title)}" /><div><strong>${escapeHtml(item.task?.title)}</strong><small>${conflicts.has(item.taskId) ? 'Conflicts with another block' : escapeHtml(item.task?.project)}</small></div><span>${minutesLabel(item.plannedMinutes)}</span></div>`),
-    ...scheduled.filter(item => !item.start).map(item => `<div class="planned-slot conflict"><time>—</time><div><strong>${escapeHtml(item.task?.title)}</strong><small>Doesn’t fit in this workday</small></div><span>${minutesLabel(item.plannedMinutes)}</span></div>`)
+    ...scheduled.filter(item => !item.start).map(item => `<div class="planned-slot conflict"><time>Unscheduled</time><div><strong>${escapeHtml(item.task?.title)}</strong><small>Doesn’t fit in this workday</small></div><span>${minutesLabel(item.plannedMinutes)}</span></div>`)
   ].join('') || '<div class="planning-empty">Choose tasks on the left,<br />then auto-arrange your day.</div>';
 
   const plannedMinutes = [...planningSelected].reduce((total, id) => total + (planningDurations.get(id) || tasks.find(task => String(task.id) === id)?.plannedMinutes || 30), 0);
@@ -837,7 +837,7 @@ function renderPlanningDocument() {
   $('#planningDocumentPreview').innerHTML = scheduled.map(item => {
     const start = item.scheduledAt ? new Date(item.scheduledAt) : null;
     const subtasks = (item.task.subtasks || []).filter(subtask => subtask.title);
-    return `<article><div><time>${start ? timeLabel(start) : '—'}</time><span>${minutesLabel(item.plannedMinutes)}</span></div><strong>${escapeHtml(item.task.title)}</strong>${subtasks.length ? `<ul>${subtasks.map(subtask => `<li>${subtask.completed ? '✓' : '○'} ${escapeHtml(subtask.title)}${subtask.plannedMinutes ? `<em>${minutesLabel(subtask.plannedMinutes)}</em>` : ''}</li>`).join('')}</ul>` : ''}<small><i class="project-dot ${item.task.color}"></i>${escapeHtml(item.task.project)}</small></article>`;
+    return `<article><div><time>${start ? timeLabel(start) : 'Unscheduled'}</time><span>${minutesLabel(item.plannedMinutes)}</span></div><strong>${escapeHtml(item.task.title)}</strong>${subtasks.length ? `<ul>${subtasks.map(subtask => `<li>${subtask.completed ? '✓' : '○'} ${escapeHtml(subtask.title)}${subtask.plannedMinutes ? `<em>${minutesLabel(subtask.plannedMinutes)}</em>` : ''}</li>`).join('')}</ul>` : ''}<small><i class="project-dot ${item.task.color}"></i>${escapeHtml(item.task.project)}</small></article>`;
   }).join('');
 }
 
@@ -846,7 +846,7 @@ function planningShareText() {
   const lines = planningSchedule.map(item => {
     const task = tasks.find(candidate => String(candidate.id) === item.taskId);
     const start = item.scheduledAt ? timeLabel(new Date(item.scheduledAt)) : 'Unscheduled';
-    return task ? `• ${start} — ${task.title} (${minutesLabel(item.plannedMinutes)})` : null;
+    return task ? `• ${start}: ${task.title} (${minutesLabel(item.plannedMinutes)})` : null;
   }).filter(Boolean);
   return [`My plan for ${day}`, '', ...lines, ...(planningObstacles ? ['', 'Obstacles:', planningObstacles] : [])].join('\n');
 }
@@ -1343,7 +1343,7 @@ function closeDetailPopovers(except = null) {
 
 function detailDurationLabel(minutes) {
   const value = Number(minutes) || 0;
-  if (!value) return '—';
+  if (!value) return 'No date';
   if (value < 60) return `${value}m`;
   const hours = Math.floor(value / 60);
   const remainder = value % 60;
@@ -2090,7 +2090,7 @@ $('#projectForm').onsubmit = async event => {
 };
 $('#boardShareButton').onclick = async () => {
   const projectTasks = tasks.filter(task => task.project === activeProject);
-  const summary = `${activeProject} — ${projectTasks.filter(task => task.status !== 'done').length} open, ${projectTasks.filter(task => task.status === 'done').length} complete`;
+  const summary = `${activeProject}: ${projectTasks.filter(task => task.status !== 'done').length} open, ${projectTasks.filter(task => task.status === 'done').length} complete`;
   try {
     await navigator.clipboard.writeText(summary);
     showToast('Project summary copied');
@@ -2666,7 +2666,7 @@ $('#magicLinkForm').addEventListener('submit', async event => {
     button.textContent = 'Email me a link';
     return;
   }
-  $('#authStatus').textContent = `Check ${email} — your sign-in link is on the way.`;
+  $('#authStatus').textContent = `Check ${email}. Your sign-in link is on the way.`;
   $('#authStatus').classList.add('success');
   button.textContent = 'Link sent';
 });
